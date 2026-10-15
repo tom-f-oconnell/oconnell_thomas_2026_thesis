@@ -1,0 +1,787 @@
+% adapted from https://latex.us/macros/latex/contrib/biblatex-contrib/biblatex-nature/nature.bbx
+% https://tex.stackexchange.com/questions/527274/modify-bibtex-style-in-usepackagestyle-naturebiblatex
+
+%% ---------------------------------------------------------------
+%% biblatex-nature --- A biblatex implementation of the Nature
+%%   bibliography style
+%% Maintained by Joseph Wright
+%% E-mail: joseph@texdev.net
+%% Released under the LaTeX Project Public License v1.3c or later
+%% See http://www.latex-project.org/lppl.txt
+%% ---------------------------------------------------------------
+%% 
+
+\ProvidesFile{tom-modified-nature.bbx}[2026-05-22 v1.3f biblatex bibliography style]
+
+% Load the standard style to avoid copy-pasting unnecessary material
+\RequireBibliographyStyle{numeric-comp}
+
+% New options
+\newtoggle{bbx:articletitle}
+\DeclareBibliographyOption{articletitle}[true]{%
+  \settoggle{bbx:articletitle}{#1}%
+}
+\newtoggle{bbx:intitle}
+\DeclareBibliographyOption{intitle}[true]{%
+  \settoggle{bbx:intitle}{#1}%
+}
+
+\ExecuteBibliographyOptions{
+  articletitle         ,
+  doi          = false ,
+  giveninits           ,
+  maxnames     = 5     ,
+  maxcitenames = 2     ,
+  punctfont            ,
+  urldate      = year  ,
+  useprefix            ,
+}
+
+\@ifpackagelater{biblatex}{2016-03-27}
+  {\ExecuteBibliographyOptions{giveninits}}
+  {\ExecuteBibliographyOptions{firstinits}}
+
+% Modify the name format
+\@ifpackagelater{biblatex}{2016-03-27}
+  {
+    \DeclareNameFormat{default}{%
+      \nameparts{#1}%
+      \usebibmacro{name:family-given}
+        {\namepartfamily}
+        {\namepartgiveni}
+        {\namepartprefix}
+        {\namepartsuffix}%
+     \usebibmacro{name:andothers}%
+    }
+  }
+  {
+    \DeclareNameFormat{default}{%
+      \usebibmacro{name:last-first}{#1}{#4}{#5}{#7}%
+      \usebibmacro{name:andothers}%
+    }
+  }
+
+% Field formats for the bibliography environment
+\DeclareFieldFormat{labelnumberwidth}{#1\adddot}
+
+% Custom field formats 
+\DeclareFieldFormat*{booktitle}{\mkbibemph{#1}\nopunct}
+% TODO delete
+%\DeclareFieldFormat{doi}{%
+%  doi\addcolon
+%  \ifhyperref
+%    {\href{https://doi.org/#1}{\nolinkurl{#1}}}
+%    {\nolinkurl{#1}}%
+%}
+\DeclareFieldFormat{doi}{%
+  %https://doi.org/
+  \ifhyperref
+    %{\href{https://doi.org/#1}{\nolinkurl{#1}}}
+    {\href{https://doi.org/#1}{https://doi.org/#1}}
+    %{\nolinkurl{#1}}%
+    {https://doi.org/#1}%
+}
+\DeclareFieldFormat*{pages}{#1}
+\DeclareFieldFormat[book,collection]{number}{\mkbibbold{#1}}
+\DeclareFieldFormat*{series}{\mkbibemph{#1}\nopunct}
+\DeclareFieldFormat*{title}{\mkbibemph{#1}\nopunct}
+\DeclareFieldFormat[article,inproceedings]{title}{#1}
+\DeclareFieldFormat[patent]{type}{%
+  \mkbibemph{%
+    \ifbibstring{#1}{\bibstring{#1}}{#1}%
+  }%
+}
+\DeclareFieldFormat{url}{\url{#1}}
+\DeclareFieldFormat{urldate}{\mkbibparens{#1}}
+%\DeclareFieldFormat*{volume}{\mkbibbold{#1}}
+% this seems to be italics, which i think is more what i want for volume
+\DeclareFieldFormat*{volume}{\mkbibemph{#1}}
+
+% TODO (delete)work? trying to remove default emph (/italics) around journal name (no, doesn't seem to)
+%\DeclareFieldFormat*{journal}{#1}
+%
+% ok journaltitle is actually the field we want to change formatting of, not journal.
+% https://tex.stackexchange.com/questions/684852/changing-reference-style
+\DeclareFieldFormat*{journaltitle}{#1}
+%
+
+\DeclareFieldFormat[book]{volume}{#1}
+
+% Simple modifications to punctuation, etc.
+\renewcommand*{\finalnamedelim}{\addspace\&\addspace}
+\renewcommand*{\intitlepunct}{\addspace}
+
+% Bibliography strings
+\DefineBibliographyStrings{english}{
+  editor   = ed        ,
+  editors  = eds       ,
+  patentus = US Patent ,
+}
+
+% Bibliography macros
+\renewbibmacro*{byeditor+others}{%
+  \ifnameundef{editor}
+    {}
+    {%
+      \nopunct
+      \printtext[parens]{\usebibmacro{editor}}%
+      \clearname{editor}%
+      \addspace\nopunct
+    }%
+  \usebibmacro{byeditorx}%
+  \usebibmacro{bytranslator+others}%
+}
+
+% TODO work? (i think so?) advantages over just printfield{pages}?
+\newbibmacro*{pages}{%
+   % TODO need some type of conditional like in chapter+pages macro below?
+  \setunit{\bibpagespunct}%
+  \printfield{pages}%
+  \newunit
+}
+%
+
+\renewbibmacro*{chapter+pages}{%
+  \iffieldundef{pages}
+    {\printfield{chapter}}
+    {}%
+  \setunit{\bibpagespunct}%
+  \printfield{pages}%
+  \newunit
+}
+
+\renewbibmacro*{editor}{%
+  \ifboolexpr{
+    test \ifuseeditor
+    and
+    not test {\ifnameundef{editor}}
+  }
+    {%
+      \midsentence
+      \usebibmacro{editorstrg}%
+      \setunit{\addspace}%
+      \printnames{editor}%
+      \clearname{editor}%
+    }
+    {}%
+}
+
+\renewbibmacro*{editor+others}{%
+  \ifboolexpr{
+    test \ifuseeditor
+    and
+    not test {\ifnameundef{editor}}
+  }
+    {%
+      \nopunct
+      \printtext[parens]{\usebibmacro{editor}}
+      \clearname{editor}%
+      \nopunct
+    }
+    {}%
+}
+
+\renewbibmacro*{event+venue+date}{%
+  \printfield{eventtitle}%
+  \ifboolexpr{
+    test {\iffieldundef{venue}}
+    and
+    test {\iffieldundef{eventyear}}
+  }
+    {}
+    {%
+      \setunit*{\addcomma\space}%
+      \printfield{venue}%
+      \setunit*{\addcomma\space}%
+      \printeventdate
+    }%
+  \newunit
+}
+
+\renewbibmacro*{in:}{%
+  \printtext{\biblcstring{in}\intitlepunct}%
+}
+\newbibmacro*{in:inproceedings}{%
+  \printtext{\bibstring{in}\intitlepunct}%
+}
+
+\renewbibmacro*{institution+location+date}{%
+  \nopunct
+  \printtext[parens]{%                     
+    \printlist{institution}%
+    \setunit*{\addcomma\space}%
+    \printlist{location}%
+    \setunit*{\addcomma\space}%
+    \usebibmacro{date}%
+  }%
+}
+
+\renewbibmacro*{issue+date}{%
+  \iffieldundef{year}
+    {}
+    {%
+      \iffieldundef{issue}
+        {\printtext[parens]{\usebibmacro{date}}}
+        {%
+          \printtext[parens]{%
+            \printfield{issue}%
+            \setunit*{\addspace}%
+            \usebibmacro{date}%
+          }%
+        }%
+    }%
+  \newunit  
+}
+  
+\renewbibmacro*{journal+issuetitle}{%
+  \usebibmacro{journal}%
+  \setunit*{\addspace}%
+  \iffieldundef{series}
+    {}
+    {%
+      \newunit
+      \printfield{series}%
+      \setunit{\addspace}%
+    }%
+  \printfield{volume}%
+  \newunit
+  \usebibmacro{issue}%
+  \newunit
+}
+
+\renewbibmacro*{name:andothers}{%
+  \ifboolexpr
+    {
+      test {\ifnumequal{\value{listcount}}{\value{liststop}}}
+      and
+      test \ifmorenames
+    }
+    {
+      \ifnumgreater{\value{liststop}}{1}
+        {\finalandcomma}
+        {}%
+      \andothersdelim
+      \mkbibemph{\bibstring{andothers}}%
+    }
+    {}%
+}
+  
+\renewbibmacro*{name:last-first}[4]{%
+  \ifuseprefix
+    {%
+      \usebibmacro{name:delim}{#3#1}%
+       \usebibmacro{name:hook}{#3#1}%
+       \ifblank{#3}{}
+         {%
+           \ifcapital
+             {\mkbibnameprefix{\MakeCapital{#3}}\isdot}
+	         {\mkbibnameprefix{#3}\isdot}%
+           \ifpunctmark{'}{}{\addhighpenspace}%
+         }%
+       \mkbibnamelast{#1}\isdot
+       \ifblank{#2}
+         {}{\addcomma\addlowpenspace\mkbibnamefirst{#2}\isdot}%
+       \ifblank{#4}{}{\addlowpenspace\mkbibnameaffix{#4}\isdot}%
+    }
+    {%
+      \usebibmacro{name:delim}{#1}%
+      \usebibmacro{name:hook}{#1}%
+      \mkbibnamelast{#1}\isdot
+      \ifblank{#2#3}{}{\addcomma}%
+      \ifblank{#2}{}{\addlowpenspace\mkbibnamefirst{#2}\isdot}%
+      \ifblank{#3}{}{\addlowpenspace\mkbibnameprefix{#3}\isdot}%
+      \ifblank{#4}{}{\addlowpenspace\mkbibnameaffix{#4}\isdot}%
+    }%
+}
+
+\renewbibmacro*{publisher+location+date}{%
+  \nopunct
+  \printtext[parens]{%                     
+    \printlist{publisher}%
+    \setunit*{\addcomma\space}%
+    \printlist{location}%
+    \setunit*{\addcomma\space}%
+    \usebibmacro{date}%
+  }%
+}
+
+\renewbibmacro*{series+number}{%
+  \iffieldundef{number}
+    {}
+    {%
+      \printfield{series}%
+      \setunit*{\addspace}%
+      \printfield{number}%
+      \newunit
+    }%
+}
+
+\newbibmacro*{title+volume}{%
+  \printfield{title}%
+  \setunit*{\addspace}%
+  \printfield{volume}%
+  \newunit
+}
+
+% New bibliography drivers, using the required order of fields. These
+% are mainly copied from standard.bbx then modified.
+\DeclareBibliographyDriver{article}{%
+  \usebibmacro{bibindex}%
+  \usebibmacro{begentry}%
+  \usebibmacro{author/translator+others}%
+  % NOTE: moved these lines here
+  \setunit{\addspace}%\newblock
+  \usebibmacro{issue+date}%
+  %
+  % TODO should this be before or after issue+date? matter?
+  \setunit{\labelnamepunct}%\newblock
+  \iftoggle{bbx:articletitle}
+    {%
+      \usebibmacro{title}%
+      %\newblock
+    }
+    {}%
+  %\printlist{language}%
+  %\newunit\newblock
+  %% TODO how are these parts different from author/translator+others above? move these up there?
+  %% (seems that above is what's being used, since it's before articletitle values?)
+  %\usebibmacro{byauthor}%
+  %\newunit\newblock
+  %% TODO this ever encountered? would i want year (issue+date) before or after this?
+  %\usebibmacro{bytranslator+others}%
+  \newunit%\newblock
+  \printfield{version}%
+  \newunit%\newblock
+  \usebibmacro{journal+issuetitle}%
+  \newunit
+  \usebibmacro{byeditor+others}%
+  % TODO TODO or should this be \printfield{pages} or something like that? (put before byeditor+others?)
+  % (copy part of macro redef for chapter+pages, above?)
+  % TODO TODO compare to format of default nature style, WITHOUT backref=true
+  \usebibmacro{pages}%
+  %\newunit
+  %\usebibmacro{note+pages}%
+  \newunit
+  \iftoggle{bbx:isbn}
+    {\printfield{issn}}
+    {}%
+  \newunit\newblock
+  % TODO block=ragged (in biblatex options) does break DOI onto their own lines, but it also puts '.' after that on next line sometimes. where is that '.' coming from? inside this macro?
+  % there are cases where i would prefer doi URL to be broken to next line (if it doesn't start previous line, and only the '.' is broken to next line)
+  % TODO does this define a block within it? redef so it doesn't? (stil getting some cases where one line ends with doi link, and the next starts with '. <pagerefs>'
+  \usebibmacro{doi+eprint+url}%
+  % TODO TODO is the below \setunit... important? and should it be after doi+... or before issue+date..?
+  % (other places seem to just use \newunit\newblock after doi+...
+  %\setunit{\addspace}\newblock
+  %\usebibmacro{issue+date}%
+  \newunit%\newblock
+  \usebibmacro{addendum+pubstate}%
+  \setunit{\bibpagerefpunct}%\newblock
+  \usebibmacro{pageref}%
+  %\newunit
+  % TODO TODO this work? or \printfield{note}
+  %\usebibmacro{note}%
+  \newunit%\newblock
+  \printfield{note}
+  \newunit%\newblock
+  \iftoggle{bbx:related}
+    {\usebibmacro{related:init}%
+     \usebibmacro{related}}
+    {}%
+  \usebibmacro{finentry}%
+}
+
+\DeclareBibliographyDriver{book}{%
+  \usebibmacro{bibindex}%
+  \usebibmacro{begentry}%
+  \usebibmacro{author/translator+others}%
+  \setunit{\labelnamepunct}\newblock
+  \usebibmacro{maintitle+title}%
+  \setunit{\addspace}%
+  \printfield{edition}%
+  \newunit\newblock
+  \printlist{language}%
+  \newunit\newblock
+  \usebibmacro{byauthor}%
+  \newunit\newblock
+  \usebibmacro{byeditor+others}%
+  \newunit
+  \printfield{volumes}%
+  \newunit\newblock
+  \usebibmacro{series+number}%
+  %\newunit\newblock
+  %\printfield{note}%
+  \newunit\newblock
+  \usebibmacro{chapter+pages}%
+  \newunit\newblock
+  \printfield{pagetotal}%
+  \newunit\newblock
+  \iftoggle{bbx:isbn}
+    {\printfield{isbn}}
+    {}%
+  \newunit\newblock
+  \usebibmacro{doi+eprint+url}%
+  \newunit\newblock
+  \usebibmacro{publisher+location+date}%
+  \newunit\newblock
+  \usebibmacro{addendum+pubstate}%
+  \setunit{\bibpagerefpunct}\newblock
+  \usebibmacro{pageref}%
+  \newunit\newblock
+  \printfield{note}%
+  \newunit\newblock
+  \iftoggle{bbx:related}
+    {\usebibmacro{related:init}%
+     \usebibmacro{related}}
+    {}%
+  \usebibmacro{finentry}%
+}
+
+\DeclareBibliographyDriver{collection}{%
+  \usebibmacro{bibindex}%
+  \usebibmacro{begentry}%
+  \usebibmacro{maintitle+title}%
+  \newunit
+  \usebibmacro{editor+others}%
+  \setunit{\labelnamepunct}\newblock
+  \printlist{language}%
+  \newunit\newblock
+  \usebibmacro{byeditor+others}%
+  \newunit\newblock
+  \printfield{edition}%
+  \newunit
+  \printfield{volumes}%
+  \newunit\newblock
+  \usebibmacro{series+number}%
+  %\newunit\newblock
+  %\printfield{note}%
+  \newunit\newblock
+  \usebibmacro{chapter+pages}%
+  \newunit
+  \usebibmacro{publisher+location+date}%
+  \newunit\newblock
+  \printfield{pagetotal}%
+  \newunit\newblock
+  \iftoggle{bbx:isbn}
+    {\printfield{isbn}}
+    {}%
+  \newunit\newblock
+  \usebibmacro{doi+eprint+url}%
+  \newunit\newblock
+  \usebibmacro{addendum+pubstate}%
+  \setunit{\bibpagerefpunct}\newblock
+  \usebibmacro{pageref}%
+  \newunit\newblock
+  \printfield{note}%
+  \newunit\newblock
+  \iftoggle{bbx:related}
+    {\usebibmacro{related:init}%
+     \usebibmacro{related}}
+    {}%
+  \usebibmacro{finentry}%
+}
+
+\DeclareBibliographyDriver{inbook}{%
+  \usebibmacro{bibindex}%
+  \usebibmacro{begentry}%
+  \usebibmacro{author/translator+others}%
+  \setunit{\labelnamepunct}\newblock
+  \printlist{language}%
+  \newunit\newblock
+  \usebibmacro{byauthor}%
+  \newunit\newblock
+  \iftoggle{bbx:intitle}
+    {%
+      \usebibmacro{title}%
+      \newblock
+    }
+    {}%
+  \usebibmacro{in:}%
+  \usebibmacro{bybookauthor}%
+  \setunit*{\newunitpunct}\newblock
+  \usebibmacro{maintitle+booktitle}%
+  \newunit\newblock
+  \usebibmacro{byeditor+others}%
+  \newunit\newblock
+  \printfield{edition}%
+  \newunit
+  \printfield{volumes}%
+  \newunit\newblock
+  \usebibmacro{series+number}%
+  %\newunit\newblock
+  %\printfield{note}%
+  \newunit\newblock
+  \usebibmacro{chapter+pages}%
+  \newunit\newblock
+  \usebibmacro{publisher+location+date}%
+  \newunit\newblock
+  \iftoggle{bbx:isbn}
+    {\printfield{isbn}}
+    {}%
+  \newunit\newblock
+  \usebibmacro{doi+eprint+url}%
+  \newunit\newblock
+  \usebibmacro{addendum+pubstate}%
+  \setunit{\bibpagerefpunct}\newblock
+  \usebibmacro{pageref}%
+  \newunit\newblock
+  \printfield{note}%
+  \newunit\newblock
+  \iftoggle{bbx:related}
+    {\usebibmacro{related:init}%
+     \usebibmacro{related}}
+    {}%
+  \usebibmacro{finentry}%
+}
+
+\DeclareBibliographyDriver{incollection}{%
+  \usebibmacro{bibindex}%
+  \usebibmacro{begentry}%
+  \usebibmacro{author/translator+others}%
+  \setunit{\labelnamepunct}\newblock
+  \printlist{language}%
+  \newunit\newblock
+  \usebibmacro{byauthor}%
+  \newunit\newblock
+  \iftoggle{bbx:intitle}
+    {%
+      \usebibmacro{title}%
+      \newblock
+    }
+    {}%
+  \usebibmacro{in:}%
+  \usebibmacro{maintitle+booktitle}%
+  \newunit\newblock
+  \usebibmacro{byeditor+others}%
+  \newunit\newblock
+  \printfield{edition}%
+  \newunit
+  \printfield{volumes}%
+  \newunit\newblock
+  \usebibmacro{series+number}%
+  %\newunit\newblock
+  %\printfield{note}%
+  \newunit\newblock
+  \usebibmacro{chapter+pages}%
+  \newunit\newblock
+  \usebibmacro{publisher+location+date}%
+  \newunit\newblock
+  \iftoggle{bbx:isbn}
+    {\printfield{isbn}}
+    {}%
+  \newunit\newblock
+  \usebibmacro{doi+eprint+url}%
+  \newunit\newblock
+  \usebibmacro{addendum+pubstate}%
+  \setunit{\bibpagerefpunct}\newblock
+  \usebibmacro{pageref}%
+  \newunit\newblock
+  \printfield{note}%
+  \newunit\newblock
+  \iftoggle{bbx:related}
+    {\usebibmacro{related:init}%
+     \usebibmacro{related}}
+    {}%
+  \usebibmacro{finentry}%
+}
+
+\DeclareBibliographyDriver{inproceedings}{%
+  \usebibmacro{bibindex}%
+  \usebibmacro{begentry}%
+  \usebibmacro{author/translator+others}%
+  \setunit{\labelnamepunct}\newblock
+  \iftoggle{bbx:articletitle}
+    {%
+      \usebibmacro{title}%
+      \newunit\newblock
+    }
+    {}%
+  \printlist{language}%
+  \newunit\newblock
+  \usebibmacro{byauthor}%
+  \newunit\newblock
+  \usebibmacro{in:inproceedings}%
+  \usebibmacro{maintitle+booktitle}%
+  \newunit\newblock
+  \usebibmacro{event+venue+date}%
+  \newunit\newblock
+  \usebibmacro{byeditor+others}%
+  \newunit\newblock
+  \iffieldundef{maintitle}
+    {\printfield{volume}%
+     \printfield{part}}
+    {}%
+  \newunit
+  \printfield{volumes}%
+  %\newunit\newblock
+  %\printfield{note}%
+  \newunit\newblock
+  \usebibmacro{chapter+pages}%
+  \newunit\newblock
+  \usebibmacro{publisher+location+date}%
+  \newunit\newblock
+  \iftoggle{bbx:isbn}
+    {\printfield{isbn}}
+    {}%
+  \newunit\newblock
+  \usebibmacro{doi+eprint+url}%
+  \newunit\newblock
+  \usebibmacro{addendum+pubstate}%
+  \setunit{\bibpagerefpunct}\newblock
+  \usebibmacro{pageref}%
+  \newunit\newblock
+  \printfield{note}%
+  \newunit\newblock
+  \iftoggle{bbx:related}
+    {\usebibmacro{related:init}%
+     \usebibmacro{related}}
+    {}%
+  \usebibmacro{finentry}%
+}
+
+\DeclareBibliographyDriver{online}{%
+  \usebibmacro{bibindex}%
+  \usebibmacro{begentry}%
+  \usebibmacro{author/editor+others/translator+others}%
+  \setunit{\labelnamepunct}\newblock
+  \usebibmacro{title}%
+  \newunit
+  \printlist{language}%
+  \newunit\newblock
+  \usebibmacro{byauthor}%
+  \newunit\newblock
+  \usebibmacro{byeditor+others}%
+  \newunit\newblock
+  \printfield{version}%
+  %\newunit
+  %\printfield{note}%
+  \newunit\newblock
+  \printlist{organization}%
+  \newunit\newblock
+  \iftoggle{bbx:eprint}
+    {\usebibmacro{eprint}}
+    {}%
+  \newunit\newblock
+  \usebibmacro{url+urldate}%
+  \newunit\newblock
+  \usebibmacro{addendum+pubstate}%
+  \setunit{\bibpagerefpunct}\newblock
+  \usebibmacro{pageref}%
+  \newunit
+  \printfield{note}%
+  \newunit\newblock
+  \iftoggle{bbx:related}
+    {\usebibmacro{related:init}%
+     \usebibmacro{related}}
+    {}%
+  \usebibmacro{finentry}%
+}
+
+\DeclareBibliographyDriver{patent}{%
+  \usebibmacro{bibindex}%
+  \usebibmacro{begentry}%
+  \usebibmacro{author}%
+  \setunit{\labelnamepunct}\newblock
+  \nopunct
+  \printlist{language}%
+  \newunit\newblock
+  \usebibmacro{byauthor}%
+  \newunit\newblock
+  \printfield{type}%
+  \setunit*{\addspace}%
+  \printfield{number}%
+  \iflistundef{location}
+    {}
+    {\setunit*{\addspace}%
+     \printtext[parens]{%
+       \printlist[][-\value{listtotal}]{location}}}%
+  %\newunit\newblock
+  %\printfield{note}%
+  \newunit\newblock
+  \usebibmacro{doi+eprint+url}%
+  \nopunct
+  \printfield[parens]{year}%
+  \newunit\newblock
+  \usebibmacro{addendum+pubstate}%
+  \setunit{\bibpagerefpunct}\newblock
+  \usebibmacro{pageref}%
+  \newunit\newblock
+  \printfield{note}%
+  \newunit\newblock
+  \iftoggle{bbx:related}
+    {\usebibmacro{related:init}%
+     \usebibmacro{related}}
+    {}%
+  \usebibmacro{finentry}%
+}
+
+\DeclareBibliographyDriver{periodical}{%
+  \usebibmacro{bibindex}%
+  \usebibmacro{begentry}%
+  \usebibmacro{author/translator+others}%
+  \setunit{\labelnamepunct}\newblock
+  \printfield{issuetitle}%
+  \setunit{\addspace}%
+  \printfield{edition}%
+  \newunit\newblock
+  \printlist{language}%
+  \newunit\newblock
+  \usebibmacro{byauthor}%
+  \newunit\newblock
+  \usebibmacro{byeditor+others}%
+  \newunit
+  \printfield{volumes}%
+  \newunit\newblock
+  \usebibmacro{title+volume}%
+  %\newunit\newblock
+  %\printfield{note}%
+  \newunit\newblock
+  \usebibmacro{chapter+pages}%
+  \newunit\newblock
+  \printfield{pagetotal}%
+  \newunit\newblock
+  \iftoggle{bbx:isbn}
+    {\printfield{isbn}}
+    {}%
+  \newunit\newblock
+  \iffieldundef{year}
+    {\usebibmacro{doi+eprint+url}}
+    {}%
+  \newunit\newblock
+  \usebibmacro{publisher+location+date}%
+  \newunit\newblock
+  \usebibmacro{addendum+pubstate}%
+  \setunit{\bibpagerefpunct}\newblock
+  \usebibmacro{pageref}%
+  \newunit\newblock
+  \printfield{note}%
+  \newunit\newblock
+  \iftoggle{bbx:related}
+    {\usebibmacro{related:init}%
+     \usebibmacro{related}}
+    {}%
+  \usebibmacro{finentry}%
+}
+
+%% 
+%% Copyright (C) 2010-2013,2016-2018,2020,2026 by
+%%   Joseph Wright <joseph@texdev.net>
+%% 
+%% It may be distributed and/or modified under the conditions of
+%% the LaTeX Project Public License (LPPL), either version 1.3c of
+%% this license or (at your option) any later version.  The latest
+%% version of this license is in the file:
+%% 
+%%    http://www.latex-project.org/lppl.txt
+%% 
+%% This work is "maintained" (as per LPPL maintenance status) by
+%%   Joseph Wright.
+%% 
+%% This work consists of the file biblatex-nature.bib,
+%%                                biblatex-nature.tex,
+%%                                nature.bbx and
+%%                                nature.cbx,
+%%           and the derived file biblatex-nature.pdf.
+%% 
+%%
+%% End of file `nature.bbx'.
