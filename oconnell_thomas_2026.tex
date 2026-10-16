@@ -6,11 +6,6 @@
 % See thesis guidelines here, if need be:
 % https://gradoffice.caltech.edu/documents/28130/phd-thesis_guidelines_rev_04-2024.pdf
 
-% could only get to work, so far, by adding this option to line in caltech_thesis.cls
-% TODO delete. doesn't seem it can be used here anyway.
-%\PassOptionsToPackage[showframe]{geometry}
-
-% TODO why am i once again timing out in the non-draft mode? (eh, worked on second try)
 % ok, at least we get a warning that draft mode is on with this added (draft selection in overleaf wasn't actually
 % triggering ifdraft to evaluate true. needed to add this "draft" argument
 % UNCOMMENT ME EVENTUALLY
@@ -18,52 +13,21 @@
 \documentclass[12pt]{caltech_thesis}
 %
 %\documentclass[12pt,draft]{caltech_thesis}
-% TODO delete
-% to try to get showframe to work correctly
-% (can, but so far only by adding showframe option to geometry import inside caltech_thesis.cls)
-% https://tex.stackexchange.com/questions/359428/showing-frame-boundaries-in-memoir-document
-% (nope, text still consistently extends past left edge shown by showframe, without corresponding warning/info messages)
-%\documentclass[12pt,draft,a4paper]{caltech_thesis}
 
 % most package imports (with many important customization options to biblatex import)
 % {
-% duplicated with an import before hyperref in caltech_thesis.cls now, but whatever.
-% just duplicated there so that hyperref import wouldn't use the conflicting default
-% options, triggering a (non-fatal) error.
-%\usepackage[hyphens]{url}
-
-% this conflicts with args in caltech_thesis.cls
-%\usepackage[hidelinks]{hyperref}
-% TODO why is this broken tho? (oh, cause draft mode. that's the only warning i was getting about draft mode, from this package)
-%\usepackage{hyperref}
+% NOTE: url (w/ hyphens option) and hyperref are loaded in caltech_thesis.cls
 
 \usepackage{graphicx}
 
-% doesn't actually work well. imported images do not reflect SVGs as viewed on my system
-%\usepackage{svg}
-
-% incompatible w/ floatrow. floatrow should be able to replace this?
-% (floatrow seemed like it was causing too many issues though)
+% for the [H] placement specifier
 \usepackage{float}
-% TODO delete?
-% to put caption besides figure/table when i want (to the left/right)
-%\usepackage[capbesideposition=outside,capbesidesep=quad]{floatrow}
-
-% TODO what does innercaption arg do?
-% TODO delete, if i end up using longtable for diagnostic odor table (leaning towards that)
-%\usepackage[innercaption]{sidecap}
-%
-
-\usepackage{todonotes}
 
 % Tentative: newtx for better-looking Times
-\usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{newtxtext,newtxmath}
 
-% for rotating tables:
-% https://tex.stackexchange.com/questions/25369
-% via: \begin{adjustbox}{angle=90} ... \end{adjustbox}
+% for \adjustbox (vertical alignment / scaling of structures in \LoadChemFigTexFromCID below)
 \usepackage{adjustbox}
 
 % for table row entries that span multiple rows
@@ -81,7 +45,7 @@
 
 \usepackage{pdflscape}
 \usepackage{longtable}
-% TODO do i actually need this for my longtable usage? was there some other reason i wanted to avoid it?
+% for \toprule / \midrule / \bottomrule
 \usepackage{booktabs}
 
 % Required to collect cell contents (for applying command to all elements)
@@ -123,6 +87,7 @@
 % for bold math fold
 % https://tex.stackexchange.com/questions/595/how-can-i-get-bold-math-symbols
 % "The AMS Short Math Guide recommends the \boldsymbol and \pmb commands (and suggests that you use the bm package for the former to get a more powerful version than provided by amsmath)."
+% (bm's \boldsymbol is used in \LogConcXBold. without bm, the space between log_10 and [x] is lost)
 \usepackage{bm}
 
 % for \xleftrightarrow
@@ -149,33 +114,12 @@
     % IMPORTANT: load a style suitable for your discipline
     %
     % NOTE: apply same change I made to nature style sheets to other cbx+bbx files, if i don't want to base off nature format
-    % TODO try biblatex-nature, or is that just "nature" here? [biblatex-]science?
-    % TODO TODO go back to using my custom format, if still want to use the note field for ownpubs.bib entries (w/ DOI before that)
-    % (but if only using one entry for there [i.e. RemyPaper], could just add contributions not manually after)
     % TODO TODO wanted this for the published content portion up top. this work ok for rest? how to just use a style for one bib if not?
     % https://www.overleaf.com/learn/latex/Biblatex_citation_styles
-    % TODO TODO switch back (or to (Author(s), year)) (why does commenting this now seem to do nothing? need to recompile from scratch? that doesn't do it. at least, while site is still aliased via renewcommand to supercite...)
-    % (maybe if i used style=tom-modified-nature, instead of bibstyle=<x>, it would be diff default? maybe numeric is just default?)
-    %citestyle=numeric,
-    %
-    % TODO from overleaf docs:
-    % https://www.overleaf.com/learn/latex/Biblatex_citation_styles#Citation_styles
-    % "authoryear ... To be used in conjunction with the author-year bibliography style."
-    % can it be used with other bibstyles tho? how else to get it, for my current bib style? seems fine...
-    % TODO how to get link from full authoryear text instead of just the year?
-    %
-    % TODO (delete. non-issue when rendering full document with all preamble and chapters) also, how to get backlinks to not include some erroneous low pages like 2,3 (which all seem to not be first references, and just point into ToC figure list / etc? yea, pretty sure these appear for cases w/ only one ref on the last real page mentioned)
-    % (was this backlink error also there w/ citestyle=numeric? yes)
-    % backlink problem also an issue w/ this instead of separate bibstyle/citestyle
-    % (oh, it's just b/c whatever part of pre-amble / document setup i'm commenting that removes initial roman numeral page numbering [for ToC, etc]
-    % screws up links, b/c then page numbers are not unique. will links across chapter 2/3 work then, even if i fix roman numeral thing? i guess pages should be numbered across chapters, so it should be fine?)
-    %style=tom-modified-nature,
     %
     % TODO how many max authors do i want in citestyle? 3? current max is 2
     citestyle=authoryear,
-    %citestyle=numeric,
     bibstyle=tom-modified-nature,
-    %style=nature,
     % this at least has the chap:remypaper bibliography in order referenced, as i want
     sorting=none,
     % isbn is also the flag that controls whether issn are shown (though maybe i want to show for certain types of refs and not regular articles?)
@@ -189,8 +133,6 @@
     % not intending to change any behavior.
     % https://tex.stackexchange.com/questions/505654/conflict-options-package-biblatex-warning
     uniquename=false,
-    % this isn't helping (w/ style=authoryear/nature) to expand author list to include more than remy for preprint
-    %uniquelist=false,uniquename=false
 ]{biblatex}
 %
 
@@ -207,7 +149,6 @@
 
 % BibTeX entry processing and hyperref color/style configuration
 % {
-% TODO some way to use ifdraft like this w/o it screwing up folding? should i redef it to be a more traditional ifstatement, like i had seen elsewhere?
 \ifdraft
   % want to see links in draft, to help betty
   \hypersetup{colorlinks=true, urlcolor=blue, citecolor=blue, linkcolor=teal}
@@ -287,16 +228,12 @@
       % since i don't think i want to show editor (at least Reddy et al has this)
       \step[fieldset=editor, null]
     }
-    % TODO TODO also remove note fields except for those with the author+an="highlight" annotation
-    % work?
     \map{
       % removes "note" field, except when "author+an" field is set (as i set to highlight my own name, via author index)
       \step[notfield=author+an, final]
       \step[fieldset=note, null]
     }
     % https://tex.stackexchange.com/questions/275564/biber-configuration-file-for-shortening-journal-names
-    % TODO why did this example also have regexp in replace arg? can just use a literal string, no? how to format that?
-    % (w/e . seems to work w/ literal)
     % TODO maybe remove all '.' from abbrevs? some citation styles (e.g. in PLoS One) seem to do that
     \map{
       \step[fieldsource=journal, match=\regexp{Current\sBiology}, replace={Curr. Biol.}]
@@ -339,21 +276,17 @@
     % TODO ever need Nat. Rev. Neurosci.?
   }
 }
-% TODO want to map common publication names to abbreviations? e.g.:
-% - Journal of Neuroscience -> J. Neurosci
-% other abbreviations:
+% other abbreviations that may need to be added above:
 % TODO TODO did i not have a mainland paper from here? just not cited yet?
 % Proc. Natl. Acad. Sci.
 % J. Comp. Neurol.
 % Annu. Rev. Vis. Sci.
 % PLoS Comput. Biol.
-% Nat. Neurosci.
 % (how does Cell handle this already? some builtin latex mechanism for it?)
 % }
 
 % More bib customization
 % {
-% TODO why is this also bolding volume #? oh nevermind, that's bolded regardless, at least with current style
 \renewcommand*{\mkbibcompletename}[1]{%
   \ifitemannotation{highlight}{\textbf{#1}}{#1}%
 }
@@ -387,14 +320,6 @@
     {\usebibmacro{cite:shorthand}}}}
 \makeatother
 
-% TODO delete. seems not to be the typical style in my field (or other theses i've looked at)
-%\renewcommand{\cite}{\supercite}
-% 
-% TODO delete
-%\renewcommand{\cite}{{ }\citep}
-% any actual reason this is preferred over citep for biblatex? matter?
-%\renewcommand{\cite}{{ \parencite}
-%
 % TODO should i be moving all these to end of sentences anyway tho? anyway to do that automatically?
 % doesn't seem to be a great way to move them automatically...
 %
@@ -404,13 +329,8 @@
 % doesn't work to fold from before / after biblatex def to here (maybe not even from start of DeclareSourcemap to here?
 % }
 
-% TODO TODO how to accomplish something similar with new \captionof things?
-%
 % Figure imports + customizations (including endfloat and [sub]section redefs)
 % {
-% TODO check this doesn't interfere w/ caltech template's figure list (there may be some options / ways of working around that if so)
-% (doesn't seem to on first glance)
-%
 % commenting this line should leave figures in-line with text, where I define them, but enabling it should move all the figures to the end
 % if commenting causes issues with undefined commands below (now that I may try using \processdelayedfloats), could add disable option to square brackets below
 %
@@ -431,22 +351,6 @@
 % is \efloatseparator used by anything other than endfloat? i assume not?
 % (no, there is an error that this is not an existing command if i try this without endfloat)
 \renewcommand{\efloatseparator}{\mbox{}}
-
-% commenting now that i am trying to move away from draft, to remove the everypage warning.
-%
-% so I don't forget i have draft mode on, but don't want to watermark every page
-% (just first page)
-% provides \BgThisPage below (but also this package is the one that depends on the deprecated everypage, and was leading to that [two of that] warning)
-%\usepackage[some]{background}
-%\SetBgScale{1}
-%\SetBgContents{\parbox{10cm}{
-% % \Huge Draft:  \today\\[14cm]\rotatebox{180}{\Huge Draft:  \today}}}
-% % is 20cm text size or is that just \Huge? how to make even bigger?
-%  \Huge Draft:  \today\\[14cm]\rotatebox{180}{\Huge Draft:  \today}}}
-%\SetBgColor{gray}
-%\SetBgAngle{270}
-%\SetBgOpacity{0.4}
-%
 
 % for proper showframe debugging  (via caltech_thesis.cls change, to use showframe option to geometry package)
 % when using pdflscape package (and its landscape environment)
@@ -494,41 +398,15 @@
   \latexincludegraphics[draft=false,#1]{#2}
 }
 
-% https://tex.stackexchange.com/questions/229440
-% ?
-% TODO what was the point of caption=false here?
-%\usepackage[caption=false]{subfig}
-% TODO this deprecated? remove? what needed for now?
-% TODO TODO try to delete this one. what's it even doing for me?
-% "subfigure and subfig are completely deprecated" (...Google AI)
-%\usepackage{subfig}
-
-% TODO TODO maybe i want something like this? maybe i can split captions across pages less? labelfont=bf do all i want there?
-% lower font size for captions within caltech thesis guidelines?
-% TODO specify font point size exactly here?
-%\usepackage[font=small, labelfont=bf]{caption}
-% ok so labelfont=bf does make the "Figure <n>[.<n>]:" part bold, which i did want, but it doesn't do that for the caption title, which i still want to do
-% TODO is font=small relative to document pt size (12pt)?
+% TODO lower font size for captions within caltech thesis guidelines? (e.g. font=small option)
 % TODO TODO TODO also, i just want the font for the text below the caption, not the caption description... not sure my stuff is currently set up well for that currently. how to handle?
 %
-% TODO delete. should be replaced by manual bolding of appropriate part of caption in \mycaption
-% textfont=bf would bold everything, including the longer description
-%\usepackage[labelfont=bf,textfont=bf]{caption}
-%
+% labelfont=bf makes the "Figure <n>[.<n>]:" part bold. the caption title is bolded manually (in \mycaptionof)
 \usepackage[labelfont=bf]{caption}
 
-% TODO TODO keep?
-%
-% at least this required to get captionof to break across pages
+% parbox=none is required to get captionof to break across pages
 % (when in a page-spanning environment like \begin{center})
-%\captionsetup{parbox=none,singlelinecheck=false}
-%
-% not sure why position seemed to change to top when i was just making other changes.
-% is that default behavior when hypcap=false or something?
-% skip also doesn't seem to be helping get short label on bottom
 \captionsetup{parbox=none,singlelinecheck=false,position=bottom,skip=20pt}
-% position=top doesn't actually seem to do anything... same as =bottom
-%\captionsetup{parbox=none,singlelinecheck=false,position=top}
 
 % for per-panel captions (A, B, ...) under the main caption of a figure (see \mysubcaption below).
 % formatted like the main caption text, w/ a bold "A)" label, each starting on its own line.
@@ -552,16 +430,8 @@
 % TODO is this actually working for endfloat stuff? (haven't exhaustively tested, but no reason to think not, so far) are there any options i can specify (here or for that package [calls]) that would fix it?
 \makeatletter
 \renewcommand{\fps@figure}{htbp}
-%\renewcommand{\fps@figure}{!htbp}
-% i thought this would help wtf
-%\renewcommand{\fps@figure}{!H}
 \makeatother
 
-% TODO delete. everything pretty much gets deferred to end of section anyway. might as well use endfloat as i had been at that point
-%\usepackage[section]{placeins}
-
-% TODO still need? maybe try w/ endfloat disabled again and see if i like this? delete?
-% TODO uncomment?
 % https://tex.stackexchange.com/questions/279/how-do-i-ensure-that-figures-appear-in-the-section-theyre-associated-with/235312
 \usepackage{placeins}
 
@@ -574,26 +444,9 @@
 \let\Oldsubsubsection\subsubsection
 \renewcommand{\subsubsection}{\FloatBarrier\Oldsubsubsection}
 
-% nevermind, titlesec seems incompatible w/ memoir document class. warning refers to (memoir?) manual sections w/ other approaches, but idk
-%% https://tex.stackexchange.com/questions/5035/paragraph-style-how-to-force-line-break-paragraph-make-paragraph-a-he
-%% only difference from above is the \itshape (italics) instead of default \bfseries (bold) paragraph header text
-%%
-%% not sure what point of these two were in SO answer...
-%%\usepackage[T1]{fontenc}
-%%\usepackage[utf8]{inputenc}
-%\usepackage[raggedright]{titlesec}
-%%
-%%
-%% Format \paragraph to be italic (\itshape) instead of bold (\bfseries)
-%\titleformat{\paragraph}[hang]{\normalfont\normalsize\itshape}{\theparagraph}{1em}{}
-%%\titleformat{\paragraph}[hang]
-%%  {\normalfont\normalsize\itshape} % Text formatting (italic, normal size)
-%%  {\theparagraph}                  % Label (e.g., numbering if active)
-%%  {1em}                            % Space between label and title text
-%%  {}                               % Code preceding the title text
-%%\titlespacing*{\paragraph}{0pt}{3.25ex plus 1ex minus .2ex}{0.5em}
-%
-% from another answer in same SO link above
+% \paragraph headers in italics (rather than bold), on their own line
+% (titlesec, as in other answers there, seems incompatible w/ memoir)
+% https://tex.stackexchange.com/questions/5035/paragraph-style-how-to-force-line-break-paragraph-make-paragraph-a-he
 % TODO do something like this, to redice spacing after (and also increase spacing before?)
 % subsubsection headings (e.g. between "Analysis of imaging data" and "ORNs")
 \makeatletter
@@ -624,17 +477,8 @@
 
 % Definition of \graphicspath and customization (could be shortened)
 % {
-% TODO why compilation seem to take so long when using this, but not below?
-% (but then below i can't use same syntax [without .pdf  or dir, for all plots... weird])
-% doesn't seem to be about characters in filename, as far as i can tell
-%\graphicspath{{figs/}{figs/clust_hierarch/kc/}{figs/clust_hierarch/model/}{figs/intensity/}{figs/mixsupp/}{figs/orn_responses/}{figs/per-odor_hists/}{figs/resp_class/}{figs/resp_class_means/}}
-
 % not clear on why i ddidn't need to manually specify clust_hierarch and subdirs in the same way, but whatever. just added stuff to resolve errors
 \graphicspath{{figs/}{figs/remy-paper}{figs/intensity/}{figs/mixsupp/}{figs/orn_responses/}{figs/per-odor_hists/}{figs/resp_class_means/}{figs/resp_class/}{figs/clust_hierarch/model/}}
-
-% TODO delete. can't seem to get by with just this
-% i guess i don't need all the subdirectories after all? now unclear...
-%\graphicspath{{figs/}}
 
 % search "ginput@path" in log to find where this is printed
 % (that string currently only appears because of these calls)
@@ -656,17 +500,13 @@
 %\fi
 % (note: having a last closing brace on a commented line by itself here caused fold issues. actually, above stuff does too...)
 
-% TODO how to log a literal like i was trying here?
-%\show\verb|after appending|
 \showgraphicspath
 % }
 
 % Definitions of \captionbacktorefs / \refwithbackref / similar (and cleveref import)
 % {
-% TODO or am i happy with just autoref? wanted automatic expanding of "figure <x>" or "table <x>" for fig:<x> and table:<x> respectively (idk but i like cleveref)
-% (although the expansions should only have number of figure)
 % https://mirror.clarkson.edu/ctan/macros/latex/contrib/cleveref/cleveref.pdf
-% TODO see some advantages of cleveref here:
+% some advantages of cleveref here:
 % https://tex.stackexchange.com/questions/119214/cross-referencing-equations-figures-and-chapters-sections-etc
 \usepackage[nameinlink,capitalize]{cleveref}
 
@@ -970,9 +810,6 @@
 
 % colors link [targets?] (including links each figure has to first reference), so they are red if not referenced
 % can be useful for debugging which figures you have not yet mentioned (or propertly referenced) in text.
-%
-% TODO this mucking with \citep / \parencite links (s.t. link is only from year instead of author + year)?
-% something else? that just how it is?
 \ifdraft
   \newcounter{susis}
   % had trouble getting it to work w/ renewcommand to redef hyperlink, but this is working as long as i use the *d versions in backref code below
@@ -983,22 +820,14 @@
   \hyperlink{#1}{\textcolor{blue}{#2}}%
   \else
   \hyperlink{#1}{\textcolor{red}{#2}}%
-  % this is kind of nice, so we don't get something we can click if it's broken, but then i can't see label of broken target in URL when hovering...
-  \iffalse
-  {#2} broken:\texttt{\string#1}%
-  {#2} broken:\commandToText{#1}%
-  \fi
   \fi
   }
   \newcommand{\hypertargetd}[2]{%
   {\refstepcounter{susis}\label{susistarget#1}}%
   \ifcsname r@susislink#1\endcsname
-  % TODO delete this teal? change?
-  %\hypertarget{#1}{\textcolor{teal}{#2}}%
   \hypertarget{#1}{#2}%
   \else
   % TODO does this fbox not work for broken links in captions? why?
-  %\hypertarget{#1}{\fbox{\textcolor{red}{#2}}}%
   \fbox{\textcolor{red}{#2}}%
   \fi
   }%
@@ -1014,64 +843,17 @@
 % to attempt to form backreferences from figures to usage in text:
 %
 % https://tex.stackexchange.com/questions/692961/links-from-table-back-to-ref-using-the-name-not-number-of-the-table
-% TODO TODO so do i have to choose between these depending on whether first reference (the one i want to use) is a nameref or a regular ref?
-% TODO try to make another command that unifies them? and also one that automatically applies to first ref, ideally across both (but at least within) (maybe w/ a way to override if i still want a particular anchor?)
-% TODO or just warn/err if there are multiple
-\NewDocumentCommand\captionbacktonameref{O{#2}mm}{%
-  % TODO delete
-  %\caption[{#1}]{\hyperlinkd{nameback:#3}{#2}}\label{#3}%
-  % TODO TODO work?
-  %\mycaption[{#1}]{\hyperlinkd{nameback:#3}{#2}}\label{#3}%
-  \mycaption{#1}{\hyperlinkd{nameback:#3}{#2}}\label{#3}%
-}
 \makeatletter
-% TODO at least make shorter alias for this/these
-%
 % i believe O{#2}mm means that the first argument defaults to the 2nd if there are only two arguments passed (and that mm means there are two mandatory arguments)
-% TODO TODO restore?
-%\NewDocumentCommand\captionbacktorefs{O{#2}mm}{%
-% TODO TODO work?
 %
 % NOTE: prefer \mycaptionof (defined above), which provides the same backlink, and also works in
 % longtables. this one only works inside floats (needs \@captype, which longtable does not define).
 \NewDocumentCommand\captionbacktorefs{O{#2}+mm}{%
   % registers #3 as the backlink target for the next \@captype caption (see \my@wrapfnum)
   \my@setnextbackref{\@captype}{#3}%
-  % seems to not need this actually? and as long as i don't use name refs, this is fine.
-  % any reason to use this anyway? TODO can i fall back to no link if nameref not defined?
-  %%\caption[{#1}]{\hyperlinkd{nameback:#3}{#2}}\label{#3}%
-  % was working just without autocomplete of existing labels when referencing
-  %
-  % TODO work?
-  % 1: Population representations of odor in the fly MB at cellular resolution
-  % 2: Population representations of odor in the fly MB at cellular resolution
-  % 3: 
-  % TODO TODO TODO why label (#3) empty?
-  \typeout{1: #1}%
-  \typeout{2: #2}%
-  \typeout{3: #3}%
-  % TODO delete
-  %\caption[{#1}]{#2}\label{#3}%
-  % TODO TODO work?
-  %\mycaption[{#1}]{#2}\label{#3}%
   \mycaption{#1}{#2}\label{#3}%
-  %
-  % since the label must come *after* the caption, i'm not seeing an obvious way to get the static analysis to work, if this command is to create the caption
-  % (some hack where it like modifies the last caption? think i'll just deal with lack of autocomplete in overleaf)
-  %
-  % TODO way to err if #3 is not a \label?
-  % TODD allow autocomplete to work?
-  % (maybe if \label{<x>} is passed explicitly to second argof captionbacktoref, rather than <x>)
-  % TODO can i define an alias for \label that will still work w/ overleaf's static analysis (e.g. \l / \lab -> \label)
-  % TODO try to get this working if i can modify function to take either \label{x} or x
-  % (or a way to enforce argument is like \label<x>. can i just match str? is \label{x} evaluated before this sees it as an argument? what does it eval to if so?)
-  %%\caption[{#1}]{#2} #3%
 }
 \makeatother
-% TODO delete this one? don't use
-\newcommand*\namerefwithbackref[1]{%
-  \hypertargetd{nameback:#1}{\nameref{#1}}%
-}
 
 % Automatic backlinks
 %
@@ -1236,38 +1018,6 @@
 }
 \makeatother
 
-% TODO delete?
-% https://tex.stackexchange.com/questions/283730/left-align-toc-items-when-using-tableofcontents
-%\usepackage{tocloft}
-%% TODO maybe these aren't defined in memoir class? example was using document class article idk
-%% Make figure numbers left-aligned in their allotted width block
-%\renewcommand{\cftfigpresnum}{\hfill} 
-%\renewcommand{\cftfigaftersnum}{\hspace{1em}} % Space after the number
-%\addtolength{\cftfignumwidth}{1em}            % Adjust width box if needed
-
-% TODO delete if i don't end up using
-% https://tex.stackexchange.com/questions/696349/how-do-i-get-the-following-table-name-supplementary-table-s1
-%\DeclareCaptionLabelFormat{supplement}{#1#2}
-
-% TODO why does this not work, even with endfloat disable flag set? need endfloat extracted? is it something else?
-% eh, not example what i want... (or not exactly working correctly. seems to renumber starting once at an arbitrary point in remy-paper chapter)
-% this is supposedly part of standard latex now (i.e. no need for chngcntr package), but also isn't working (or is getting screwed up by some other mistake i'm making / incompatibility)
-%\counterwithin{figure}{section}
-
-% TODO delete
-% https://stackoverflow.com/questions/44658990/figure-numbers-according-to-sections-and-subsections
-% also seems to do nothing
-%\renewcommand{\thefigure}{\arabic{section}.\arabic{subsection}.\arabic{figure}}
-% TODO does not work (before or after counterwithin, with most packages i could imagine screwing with this disabled)
-% another answer says you need to manually reset figure counter as desired for this to work (then what's the point? and why no figurues have the 3 part name anyway?)
-%\renewcommand{\thefigure}{\arabic{chapter}.\arabic{section}.\arabic{figure}}
-
-% TODO work?
-% https://tex.stackexchange.com/questions/47184/height-of-figure-caption-textheight
-% TODO TODO need param to take # lines of caption? or can i figure that out (maybe pass in caption text?)
-%\newcommand{\textheightminuscaption}{\dimexpr\textheight - \baselineskip - \abovecaptionskip - \belowcaptionskip\relax}
-%
-
 % also doesn't work from just after biblatex import to here (including if intervening fold blocks commented)
 % }
 
@@ -1287,19 +1037,9 @@
 
 \newcommand{\um}{\ensuremath{\mu m}}
 
-% TODO any way to bold what this returns? was having a hard time, at least as a longtable column header (odor_panel2), hence the bold version below
 \newcommand{\LogConcX}{\ensuremath{\log_{10} \ce{[x]}}}
+% bold version (e.g. for table column headers)
 \newcommand{\LogConcXBold}{\ensuremath{\boldsymbol{\log_{10}} \textbf{\ce{[x]}}}}
-% TODO delete all this. have a working one above w/ textbf around ce
-% this seems like it *maybe* bolds the 10, but nothing else?
-%\newcommand{\LogConcXBold}{\ensuremath{\mathbf{\log_{10} \ce{[x]}}}}
-% this doesn't seem to bold anything
-%\newcommand{\LogConcXBold}{\ensuremath{\mathversion{bold}\log_{10} \ce{[x]}\mathversion{normal}}}
-% does not compile (can probably only bold one single symbol?)
-%\newcommand{\LogConcXBold}{\ensuremath{\boldsymbol{\log_{10} \ce{[x]}}}}
-% does not compile
-%\newcommand{\LogConcXBold}{\ensuremath{\boldsymbol{\log_{10}} \boldsymbol{\ce{[x]}}}}
-%
 
 % TODO do i actually want ensuremath for this one? maybe not? matter?
 \newcommand{\DeltaFOverF}{\ensuremath{\Delta\text{$F$/$F_0$}}}
@@ -1308,13 +1048,9 @@
 % TODO happy with this?
 % TODO or use F/F in math mode (prob w/ diff format to actually get a fraction?
 \newcommand{\ORNRespStat}{\ensuremath{\text{mean }\pm\text{peak \DeltaFOverF}}}
-%\newcommand{\ORNRespStat}{mean \pm peak dF/F}
 
 % TODO TODO just replace this w/ "spike counts" for consistency?
 \newcommand{\NSpikes}{\ensuremath{N_{spikes}}}
-% can't figure how to take optional argument that would put '= ' between current value and the optional # passed in
-% https://tex.stackexchange.com/questions/567759/how-do-i-add-optional-arguments-in-newcommand
-%\newcommand{\NComps}[1]{\ensuremath{N_{components}=#1}}
 \newcommand{\NComps}{\ensuremath{N_{components}}}
 
 % TODO adjust these so they automatic add space after if appropriate (i.e. if followed by something other than punctuation or an existing space)? or how else to define?
@@ -1330,7 +1066,6 @@
 \newcommand{\cid}[1]{\href{https://pubchem.ncbi.nlm.nih.gov/compound/#1}{#1}}
 
 % NOTE: looks like some products use sigald for last URL part before product id, and others use siald, and since i can't really figure out which is which (and neither seems to work with both), will try using search instead
-%\newcommand{\SigmaAldrich}[1]{\href{https://www.sigmaaldrich.com/US/en/product/sigald/#1}{#1}}
 \newcommand{\SigmaAldrich}[1]{\href{https://www.sigmaaldrich.com/US/en/search/#1?focus=products&term=#1&type=product_number}{#1}}
 
 % TODO convert most/all my \newcommand to \newcommand*?
@@ -1344,14 +1079,9 @@
 % trailing commas seem to work, as does scale=1.0 in default argument definition (the currently empty [])
 \newcommand*{\LoadChemFigTexFromCID}[2][]{\adjustbox{valign=m,#1}{\input{chemfig/#2}}}
 
-% TODO work (not as is, could maybe get something working if & character wasn't there)?
-% some way to do this, maybe simulating two columns when actually being one? makecell? multicolumn/row?
-%\newcommand{\CidAndStructure}[1]{\cid{#1} & \LoadChemFigTexFromCID{#1}}
-
 \newcommand{\lotus}[1]{\href{https://lotus.naturalproducts.net/compound/lotus_id/#1}{#1}}
 % what remy has seem to be called "BioCyc IDs" in these pages, but i haven't checked that all links are working properly
 % TODO should this be wrapped with \url? that work w/ 1st arg of href?
-% TODO this even work?
 \newcommand{\MetaCycURL}[1]{https://biocyc.org/compound?orgid=META\&id=#1}
 \newcommand{\MetaCyc}[1]{\href{\MetaCycURL{#1}}{#1}}
 
@@ -1376,13 +1106,9 @@
 % (rather than one(s) it expands into \tabularxcolumn from?)
 %
 % Define a new column types that wrap centered 'c'/left-aligned 'l'/etc cells in commands
-% TODO was C really not some existing column type? maybe defined by tabularx?
-% what letters are taken (if any caps)?
-% all existing tables already had CID as l, so no need for a c type atp
 \newcolumntype{U}{>{\collectcell\cid}l<{\endcollectcell}}
 \newcolumntype{P}{>{\collectcell\cid}c<{\endcollectcell}}
 
-% TODO need to define custom type that maps to p{1.8cm} in case where i used that? or no longer needed?
 \newcolumntype{G}{>{\collectcell\SigmaAldrich}l<{\endcollectcell}}
 
 % TODO TODO any way i can convert "Tabular column type <x> overwritten with ..." warnings to convert to errors?
@@ -1391,22 +1117,15 @@
 % TODO TODO some other .tex file i can make to generate separte PDFs for each of these (to use not in latex)
 % or a python fn for that?
 \newcolumntype{T}{>{\collectcell\LoadChemFigTexFromCID}c<{\endcollectcell}}
-% TODO work (not w/ couple ways i tried to use this)? can i get something like it working?
-% eh, maybe if it just returned one entry? not sure if i care to have a separate properly aligned "Structure"
-%\newcolumntype{X}{>{\collectcell\CidAndStructure}c<{\endcollectcell}}
 
 % }
 
 % https://tex.stackexchange.com/questions/125903/how-to-line-up-a-chemical-structure-in-the-table-chemfig
-%\setchemfig{atom sep=2em,bond offset=1pt,double sep=4pt,bond style={line width=0.8 pt}}
 % TODO any reason to have global options be diff from what i use for table odor_panel1? currently that is only place that used this anyway
 % TODO TODO need to include this when i try standalone rendering? some other config file i can put these in?
 \setchemfig{atom sep=1.0em,bond offset=1pt,double sep=4pt,bond style={line width=0.8 pt}}
 % TODO why? (well, removing it didn't improve things [i.e. did not scale font w/ `atom sep`] w/ everything else same)
 % TODO TODO define this per table below too?
-%\renewcommand{\printatom}[1]{\fontsize{14pt}{14pt}\selectfont{\ensuremath{\mathrm{#1}}}}
-% TODO need both?
-%\renewcommand{\printatom}[1]{\fontsize{14pt}{14pt}\selectfont{\ensuremath{\mathrm{#1}}}}
 \renewcommand*\printatom[1]{\tiny\ensuremath{\mathrm{#1}}}
 
 % for debugging package versions (wrt local install):
@@ -1416,13 +1135,6 @@
 % Document preamble
 % {
 \begin{document}
-
-% irrelevant now that i'm not even (currently) showing title page when draft?
-% no, it just applies to first page (ToC) then
-%\ifdraft
-%% draft watermark on this page only
-%\BgThispage
-%\fi
 
 \title{Natural odors and mixture encoding in the fly olfactory system}
 \author{Thomas O'Connell}
@@ -1458,47 +1170,6 @@
 % \rightsstatement{Some rights reserved. This thesis is distributed under a [name license, e.g., ``Creative Commons Attribution-NonCommercial-ShareAlike License'']}
 
 \begin{acknowledgements}
-% TODO TODO delete test code
-\iffalse
-%\iftrue
-% TODO why does it no longer warn (didn't it once?) if multiple refs to same thing?
-% (that behavior would be desirable to add, since i think the link from figure back to ref is broken if there are ever multiple of these)
-% TODO TODO try re-enabling draft mode? maybe it was only ever the susisbad/hyperlink stuff that was triggering some of those anyway?
-% TODO add behavior enforceing that (or ask ai to?)
-%Test ref2: \refwithbackref{fig:1}
-%Test ref3: \refwithbackref{fig:1}
-%Test ref1: \crefwithbackref{fig:1}
-%\begin{figure}
-%\centering
-
-%\rule{1cm}{1cm}
-%% TODO delete
-%% try to remove remove need for 2nd captionbacktorefs arg as long as label defined first. possible? NO
-%% can't define label before caption tho. produces wrong output. see:
-%% https://www.stefaanlippens.net/latexcaptionlabel/ (and Google AI also thinks the same, and i  tested code from that link and got same output)
-%%\label{fig:test}
-%%\captionbacktorefs{title}
-%%
-%%\captionbacktorefs{title}{fig:test}
-%%\caption{title}\label{fig:test}
-%\caption{title}\label{fig:test}
-%\end{figure}
-%
-%% TODO delete. wouldn't be useful anyway, since label must be defined after caption
-%% shows nothing
-%%\makeatletter
-%%current label: \@currentlabel
-%%\makeatother
-%
-%%back ref: \refwithbackref{fig:test}
-%ref: \ref{fig:test}
-
-% also shows nothing. delete.
-%\makeatletter
-%current label2: \@currentlabel
-%\makeatother
-\fi
-% end code to delete
 
 First, I would like to thank my advisor Elizabeth Hong for her support and guidance throughout the work in this thesis, and my committee for their patience with me.
 
@@ -1560,18 +1231,6 @@ This mixture suppression does not seem to be inherited from the ORNs, where glom
 \end{publishedcontent}
 \fi
 
-% TODO delete. does not seem necessary to get linking to subsections to work from ToC. just need to change ToC depth
-%
-%%\setsecnumdepth{subsubsection}
-% this one, but NOT above, will add numbering to subsection (i.e. <chapter>.<section>.<subsection>) depth in text,
-% but does not seem to change anything else (at least, w/ figure at end as they are now via endfloat...).
-% this does not require changing \setcounter{secnumdepth}{3} in .cls file (though maybe getting actual subsubsection numbering would?)
-%%\maxsecnumdepth{subsubsection}
-% is this necessary to set a creater ToC depth (esp w/ linking that works?) (NO!)
-% this was equiv to above
-%\maxsecnumdepth{subsection}
-%
-
 % TODO can i also end refsection here? prob not eh?
 % TODO actually need trailing % for any / all these lines? why?
 \newcommand{\ReferencesSection}{%
@@ -1582,8 +1241,6 @@ This mixture suppression does not seem to be inherited from the ORNs, where glom
     % plus a dedicated \section duplicates the "References" heading
     \printbibliography[heading=none]%
 }
-
-% TODO TODO can i make all figure/table labels bold? (to differentiate from text following)
 
 % https://tex.stackexchange.com/questions/611813/renumbering-or-adding-s-to-supplementary-section
 % linking (to/from ToC at least) does seem to work w/ these, tho justified weird in ToC ("S2.1" has "S" before prior "2" in prior "2.<n>")
@@ -1614,9 +1271,6 @@ This mixture suppression does not seem to be inherited from the ORNs, where glom
         \let\theHtable\oldtheHtable%
         \let\chapter\oldchapter% Restore original \chapter
         \oldchapter% Call original \chapter
-        % TODO keep here? or just call at end of \supplementsection, after all figs?
-        % (did not work here)
-        %\processdelayedfloats%
   }
 }
 
@@ -1809,10 +1463,6 @@ When we do the same experiments with binary subsets chosen from each of the five
 \ReferencesSection
 \end{refsection}
 
-% TODO TODO TODO delete (or switch to \iftrue)
-%\iffalse
-\iftrue
-
 \chapter{Structured representations of odor in the fly mushroom body reflect odor relationships in natural sources}
 \label{chap:remypaper}
 \begin{refsection}
@@ -1859,30 +1509,13 @@ In particular, inputs from glomeruli tuned to odors common in food are overly co
 Whereas random networks maximize coding capacity and promote the separability and discriminability of odor representations throughout odor space, structured networks can correlate odor representations and promote generalization of odors along important directions of odor space, for instance, related to the relationships of odorant molecules in behaviorally salient natural odor sources.
 We investigated how odor coding in the fly olfactory circuit balances these competing needs.
 
-% if i'm going to use captionof generally, rather than having the caption inside the float, need this to suppress warnings i'd otherwise get.
-% TODO TODO maybe just silence the warning tho, so hypcap can still work for other things?
-% or better to be consistent (always linking to caption rather than top of figure/table?
-%\captionsetup[figure]{hypcap=false}
-%\captionsetup[table]{hypcap=false}
-
 \section{Results}
 \subsection{Population imaging of odor representations in the MB at cellular resolution}
 % Figure 1
 % {
-%\begin{figure}[H]
-% TODO need {\linewidth} at end?
-%\begin{minipage}{\linewidth}
-%\centering
-
-%\begin{center}
 \begin{longcapfigure}
-    
-%\includegraphics[width=\textwidth]{1}
 \includegraphics[height=0.8\textheight]{1}
 
-% TODO TODO restore?
-%\captionbacktorefs[Population representations of odor in the fly MB at cellular resolution]{}{fig:1}
-%\captionbacktorefs[Population representations of odor in the fly MB at cellular resolution]{%
 \mycaptionof{figure}{Population representations of odor in the fly MB at cellular resolution}{}
 \label{fig:1}
 
@@ -1895,14 +1528,10 @@ A subset (open gray symbols) spanning the odor space was selected for measuremen
 % TODO happy with this?
 \mysubcaption{B}{%
 Imaging volumes comprising \textasciitilde11 planes through the KC soma layer capture the activity of >85\% of KCs in an MB (top), or \numrange{9}{10} planes covering all \textasciitilde50 glomeruli in the AL (middle).
-%}{fig:1}
 }
-%\end{figure}
-%\end{minipage}
-
-%\end{center}
 \end{longcapfigure}
 
+% rest of the caption (panels C-I), currently omitted:
 %% TODO TODO say genotype? how/where?
 %% TODO TODO was it from one fly?
 %% TODO TODO TODO what was size of scale bar? say so
@@ -1937,57 +1566,6 @@ Imaging volumes comprising \textasciitilde11 planes through the KC soma layer ca
 %Flies had genotype 20xUAS-nls-OpGCaMP6s-p10 (III)/+; OK107-Gal4 (IV)/+.
 %% TODO TODO be consistent w/ these abbrevs
 %Odors are 1-pentanol (1-5ol), 1-hexanol (1-6ol), 1-octanol (1-8ol), 2-butanone (2-but), 2-heptanone (2h), hexanal (6al), \BCit\,(B-cit), isoamyl acetate (IaA), linalool (Lin), acetic acid (aa), benzaldehyde (benz), ethyl butyrate (eb), ethyl propionate (ep), pentyl acetate (pa), trans-2-hexenal (t2h), and pentanoic acid (va).
-%
-%}{fig:1}
-%%(captions on next page)
-%\end{figure}
-\iffalse
-\begin{figure}[H]
-\ContinuedFloat
-% NOTE: do need the empty square brackets here, to keep this out of ToC
-\caption[]{(continued)}
-\textbf{A)} $t$-SNE embedding of 109 odors based on the patterns of activity they elicit across 24 fly ORs in the Hallem dataset.
-A subset (open gray symbols) spanning the odor space was selected for measurement in the MB.
-
-% TODO happy with this?
-\textbf{B)} Imaging volumes comprising \textasciitilde11 planes through the KC soma layer capture the activity of >85\% of KCs in an MB (top), or \numrange{9}{10} planes covering all \textasciitilde50 glomeruli in the AL (middle).
-
-% TODO TODO say genotype? how/where?
-% TODO TODO was it from one fly?
-% TODO TODO TODO what was size of scale bar? say so
-\textbf{C)} Example ORN terminal trial-averaged \DeltaFOverF{ }odor responses in two example planes from one fly (right three columns).
-All glomeruli identified in each plane are shown collectively across the left two columns.
-Top: responses to three ``diagnostic'' odors, with the target glomerulus for each labeled in red.
-Bottom: responses to three example odors, with 1-pentanol and 1-hexanol exhibiting more similar responses than either does to the more structurally distant ethyl propionate.
-See \Crefwithbackref{fig:s1} for example volumetric responses to the full 24-odor diagnostic panel and identified ROIs, and \Crefwithbackref{fig:s2} for mean responses to this panel for all our individual ORN flies.
-
-\textbf{D)} Mean ORN terminal response for each responsive glomerulus to this first 17-odor panel ($n{=}9$).
-See \Crefwithbackref{fig:s3} for means, SDs, and per-glomerulus sample sizes for all of our ORN terminal and PN dendrite data.
-
-\textbf{E)} Left: baseline fluorescence (left), weighted ROI masks of KCs (middle), and ROI labels corresponding to individual KCs (right) from a single imaging plane in an MB.
-Right: odor-evoked patterns of KC activity in response to 1-pentanol, 1-hexanol, and ethyl propionate.
-Scale bar, \qty{10}{\micro\metre}.
-
-\textbf{F)} Example odor-evoked calcium signals in an imaging block from a single KC.
-
-\textbf{G)} Population representations in \textasciitilde\num{1800} KCs to 17 odors in the MB from a representative fly.
-Each row is a cell and each column is a trial.
-Cells are sorted by odor tuning.
-
-% used to be S1B, but now gray bars which were Hallem are my "normalized" ORN data, w/ new red markers + y-label for Hallem OR firing rate
-% TODO still n=4 for remy's KC data here?
-% TODO happy with this?
-\textbf{H)} Comparison of KC response rate (mean and 95\% CI, $n{=}4$ flies; black), normalized mean (across glomeruli) ORN terminal \DeltaFOverF{ } (mean and 95\% CI, $n{=}9$ flies; gray), and mean evoked OR firing rate (across receptors) in the Hallem dataset to each odor (red).
-
-\textbf{I)} Matrix of pairwise correlation between KC population responses in individual odor trials, where trials are shown in presentation order (left) or grouped by odor (right).
-KC responses elicited by 1-hexanol were more similar to those elicited by 1-pentanol (green) than by ethyl propionate (orange).
-% TODO remove abbrevs here and refer to table? or be consistent in chap:natmix
-% TODO TODO remove genotypes and just refer to table (or add for ORN flies)
-Flies had genotype 20xUAS-nls-OpGCaMP6s-p10 (III)/+; OK107-Gal4 (IV)/+.
-% TODO TODO be consistent w/ these abbrevs
-Odors are 1-pentanol (1-5ol), 1-hexanol (1-6ol), 1-octanol (1-8ol), 2-butanone (2-but), 2-heptanone (2h), hexanal (6al), \BCit\,(B-cit), isoamyl acetate (IaA), linalool (Lin), acetic acid (aa), benzaldehyde (benz), ethyl butyrate (eb), ethyl propionate (ep), pentyl acetate (pa), trans-2-hexenal (t2h), and pentanoic acid (va).
-\end{figure}
-\fi
 % }
 
 In the arc of sensorimotor transformation, representations of odor identity encoded in KC activity patterns represent the output from the sensory arm of the pathway that is flexibly coupled to distinct downstream outputs and behaviors\cite{MBLearningBehaviorReview}.
@@ -2026,11 +1604,6 @@ The percentage of KCs responding to each odor was similar in each MB, ranging fr
 When compared against mean OR activity for each odor, estimated by averaging the firing rates evoked by each odor across all ORs in the Hallem dataset, KC response rate was not significantly correlated with mean ORN response strength (\cref{fig:1}H, Spearman's $\rho{=}0.48$, $p{=}0.05$).
 However, we note that the Hallem dataset underestimates ORN population responses to acids and amines since it does not include odorant receptors from the ionotropic receptor (IR) family\cite{IRs}.
 
-% TODO TODO TODO delete
-%\end{refsection}
-%\end{document}
-%
-
 Overall, KCs were narrowly tuned, with most cells responding to two or fewer odors, and a significant fraction (\textasciitilde40\%) responding to no odor in a 17-odor panel.
 % TODO TODO is "more broadly tuned" even accurate? what point is 3F actually making?
 However, compared against modeled KC responses, observed odor responses in KCs were more broadly tuned (\crefwithbackref{fig:3}F).
@@ -2067,8 +1640,6 @@ Odors that evoke similar KC response patterns in one fly tend to also elicit sim
 Spearman's rank correlation between the rows of \textbf{(B)} (i.e., between flies), evaluating the similarity of the rank ordering of odor pairs between flies according to their representational distance in KCs.
 }
 
-% TODO TODO still need this now that i'm putting all in captions? will captions be broken appropriately? (or can i easily get them to be?)
-%\iffalse
 \mysubcaption{D}{%
 Left: same as \textbf{(C)}, but for shuffled data where odor responses were randomized by permuting the columns of the cell x odor response matrix for each fly.
 The matrix shows the mean Spearman's correlation across \num{10000} shuffles.
@@ -2088,7 +1659,6 @@ Mean odor response profiles across KCs in each response cluster for each fly.
 KCs with conserved odor tuning profiles were found in every MB.
 }
 \end{longcapfigure}
-%\fi
 % }
 
 To evaluate these ideas, we compared the correlational structure of odor representations encoded in KC activity patterns in multiple flies.
@@ -2678,7 +2248,6 @@ Additionally, each cross was utilized to establish only three subsequent bottles
 Odors were delivered essentially as previously described\cite{HongWilson2015}.
 % TODO also mention it was humidified?
 A custom-built multi-channel olfactometer delivered a constant \qty{2}{\litre\per\minute} stream of charcoal-filtered air.
-% TODO consistent ml / mL?
 A 3-way solenoid valve directed \qty{200}{\milli\litre\per\minute} of this flow either through a \qty{20}{\milli\litre} glass vial containing \qty{2}{\milli\litre} of odor solution (valve open) or an equivalent vial containing \qty{2}{\milli\litre} of the solvent.
 Air flow was controlled using mass flow controllers (MC series, Alicat Scientific, Tucson, AZ).
 The \qty{200}{\milli\litre\per\minute} control or odor streams were carried by tubing of matched lengths and rejoined the carrier stream at the same point along the carrier tube, approximately \qty{10}{\centi\metre} from the fly.
@@ -2696,8 +2265,7 @@ Experiments were conducted at room temperature (\textasciitilde\qty{22}{\degreeC
 % TODO want to change any formatting of concentrations / chemical names here?
 % TODO formatting of pH?
 The brain was constantly perfused by gravity flow with saline containing (in \unit{\milli\molar}): 103 NaCl, 3 KCl, 5 N-Tris(hydroxymethyl)methyl-2-aminoethane-sulfonic acid, 8 trehalose, 10 glucose, 26 \ce{NaHCO3}, 1 \ce{NaH2PO4}, 1.5 \ce{CaCl2}, and 4 \ce{MgCl2} (pH 7.3, osmolarity adjusted to \qtyrange{270}{275}{\milli\osmole}).
-% TODO command for this ml/min formatting (+ use above, and everywhere else) (delete? do i even like this?)
-The saline was bubbled with 95\% \ce{O2} / 5\% \ce{CO2} and circulated in the bath at \textasciitilde2--3$\text{mL/min}$.
+The saline was bubbled with 95\% \ce{O2} / 5\% \ce{CO2} and circulated in the bath at \textasciitilde\qtyrange{2}{3}{\milli\litre\per\minute}.
 
 \subsubsection{AL imaging}
 Flies were head-fixed with the dorsal surface of the head approximately parallel to
@@ -2757,7 +2325,6 @@ Stimulus-responsive clusters were manually selected.
 For PN bouton movies, this step was used to filter out spurious ROIs – only components belonging to stimulus-responsive clusters were included in subsequent analyses.
 For KC movies, the relatively high level of baseline fluorescence in combination with the use of a nuclear-targeted calcium indicator resulted in very high-quality cellular segmentation, with very few (if any) spurious ROIs.
 \Cref{fig:1}G shows the responses of all extracted cells from one representative experiment, with cells (rows) corresponding to stimulus-responsive clusters displayed at the top of the matrix, and non-responder cell clusters shown at the bottom.
-% TODO define custom command for micrometer?
 CaImAn-MATLAB was used to perform 3D source extraction on KC somata data collected at a \textit{z}-step size of \qty{3}{\micro\metre}.
 For each KC, a single ROI was extracted, which was roughly spheroid and spanned multiple planes.
 The fluorescence baseline $F_0$ was computed at each timepoint by taking a fixed percentile (ranging from \qtyrange{20}{40}{\percent}) of a rolling \qty{30}{\second} time window.
@@ -2959,44 +2526,15 @@ E.J.H. and T.O.S. supervised the project and acquired funding.
 % S1 - Sample sizes and genotypes for imaging datasets
 \begin{longcaptable}
 \centering
-%\begin{tabular}{llllc}
-% TODO TODO why are vertical rules not goign all teh way up and down?
-%\begin{tabular}{|l|l|l|l|c|}
-% does not work w/o specifier after p (e.g. p{1cm}) and not sure how to specify full height
-%\begin{tabular}{|p|p|p|p|p|}
 \begin{tabularx}{\textwidth} {
- % TODO how to get bottom vertical alignment (at least for header)?
- % (well, have it for everything now, via \renewcommand{\tabularxcolumn}{b} in preamble)
- %| >{\raggedright\arraybackslash}X
- %| >{\raggedright\arraybackslash}X
- %| >{\raggedright\arraybackslash}X
- %| >{\raggedright\arraybackslash}X
- %| >{\raggedright\arraybackslash}X |
- %| >{\centering\arraybackslash}c{0.5cm}
- %| >{\centering\arraybackslash}X
- %| >{\centering\arraybackslash}X
- %| >{\centering\arraybackslash}X
- %| >{\centering\arraybackslash}c{0.5cm} |
- %| c | X | c | c | c |
  c X c c c
 }
-%\toprule
-%\hline
-%\multirowthead{2}{\thead{Odor\\panel}} &
 \multirowthead{2}{\thead{Odor panel}} &
 \multirowthead{2}{\thead{Genotype}} &
-% didn't help
-%%\multirow{2}{*}{\makecell{Odor\\panel}} &
-%%\multirow{2}{*}{Genotype} &
-%%\multicolumn{2}{c|}{\thead{Imaged}} &
-%\multicolumn{2}{c|}{Imaged} &
 \multicolumn{2}{c}{Imaged} &
-% TODO how to get vertical rule between imaged and nflies to go all the way to top? (stops at cline now)
-%\multirow{2}{*}{$N_{flies}$} \\ \cline{3-4}
 \multirowthead{2}{\thead{$N_{flies}$}} \\ \cline{3-4}
 % TODO something other than "Structure"? "Population"? "Unit"?
   & & \thead{Region} & \thead{Structure} & \\
-%\midrule
 \hline
 % TODO say soma layer or something other than "MB" (to distinguish from "MB calyx")?
 % TODO TODO add footnote or something for KC soma N, referring to my fig:s7?
@@ -3018,7 +2556,6 @@ E.J.H. and T.O.S. supervised the project and acquired funding.
  & \makecell{+; +; 20xUAS-nls-OpGCaMP6s-p10/+;\\OK107-Gal4/+} & MB & \makecell{KC\\somata} & 20 \\
 \hline
 \end{tabularx}
-%\end{tabular}
 \mycaptionof{table}{Sample sizes and genotypes for imaging datasets}{%
 With the exception of the KC soma datasets, and a small amount of the ORN terminal data, all flies were presented each odor in their respective panels.
 % TODO TODO be consistent about abbreviations for these, both in text and in tables/figures (i may need to regenerate some plots...)
@@ -3035,53 +2572,19 @@ For these cases where not all odors are presented in each fly, the $N_{flies}$ r
 % to increase space between rows
 \renewcommand{\arraystretch}{2.0}
 
-% TODO should i just adjust global (or within group) chemfig draw properties instead tho? what is current effect of those params anyway?
-% (doing at least some of that now. think it's fine. delete this comment?)
-
 \begin{longcaptable}
 \centering
 
-% TODO delete. think i'm fine with this globally now
-% this + scale=0.6 (above) seems to work well for this table (w/ \printatom fontsize = \tiny (below))
-% https://tex.stackexchange.com/questions/125903
-% locally change the molecule layout
-% (trying global option setting the same now)
-%\setchemfig{atom sep=1.0em}
-
-% TODO delete
-%%\setchemfig{atom sep=0.8em}
-% NOTE: i actually like decreasing overall scale (via custom col type w/ scale set) rather than just changing this, because this doesn't also scale the atom letters, so they become relatively larger and start to overshadow bonds)
-% TODO some other setting that works instead of this?
-%%\setchemfig{atom sep=0.6em}
-
-% the following is necessary because you have defined \printatom with
-% a fixed fontsize:
-% TODO TODO and why did we do that? necessary? is that part of the reason i can't use atom sep for overall scale?
-% TODO restore?
-%\renewcommand*\printatom[1]{\scriptsize\ensuremath{\mathrm{#1}}}
-% like better?
-% (trying global renewcommand setting the same now)
-%\renewcommand*\printatom[1]{\tiny\ensuremath{\mathrm{#1}}}
-% TODO adapt this here, for specific font size?
-%\renewcommand{\printatom}[1]{\fontsize{14pt}{14pt}\selectfont{\ensuremath{\mathrm{#1}}}}
+% NOTE: (for structure size) i actually like decreasing overall scale (via custom col type w/ scale set) rather than just changing \setchemfig{atom sep=...}, because that doesn't also scale the atom letters, so they become relatively larger and start to overshadow bonds)
 
 {\footnotesize
-% TODO restore this if other doesn't work (this one has catalog no between CID and structure)
-% TODO TODO maybe G is reserved or something?
 \begin{tabular}{llUGT}
-% TODO delete. no need for custom structure scale (Z)
-%\begin{tabular}{llUlZ}
 \toprule
 % NOTE: the multicolumn{1}... is to exclude the header row from having the command behind
 % custom colcell col type applied to it (so CID doesn't get turned into a junk PubChem link, etc)
 % TODO or define some function that displays both CID with link, as well as structure (maybe with ` & ` separator between them). not sure there's a good way to do that w/ colcell... try (tried, first attempts didn't work)?
 \textbf{Name} & \textbf{Abbrev.} & \multicolumn{1}{l}{\textbf{CID}} & \multicolumn{1}{l}{\textbf{Catalog No.}} & \multicolumn{1}{c}{\textbf{Structure}} \\
-% TODO work (no, not as is. maybe if fn output was defined to not be two col values)?
-% complains about extra alignment tab
-%Name & Abbrev. & \multicolumn{1}{l}{CID}  & \multicolumn{1}{c}{Structure} & Catalog No. \\
-%Name & Abbrev. & \multicolumn{1}{l}{CID \& Structure} & Catalog No. \\
 \midrule
-% TODO restore if below doesn't work
 1-pentanol & 1-5ol & 6276 & 138975 & 6276 \\
 1-hexanol & 1-6ol & 8103 & 471402 & 8103 \\
 1-octanol & 1-8ol & 957 & 297887 & 957 \\ 
@@ -3100,9 +2603,6 @@ methyl salicylate & ms & 4133 & M6752 & 4133 \\
 pentyl acetate & pa & 12348 & 109584 & 12348 \\ 
 trans-2-hexenal & t2h & 5281168 & 158131000 & 5281168 \\ 
 pentanoic acid & va & 7991 & 240370 & 7991 \\ 
-%
-% TODO work (no)? (expanding cid to two col values: CID w/ link and structure)
-%1-pentanol & 1-5ol & 6276 & 138975 \\
 \bottomrule
 \end{tabular}}
 \mycaptionof{table}{Odor information -- panel I}{%
@@ -3118,14 +2618,11 @@ All compounds were purchased from Sigma-Aldrich.
 
 % Table S3 - Odor panel 2 (validation) details
 \begingroup
-%\scriptsize
 % it is easier to get everything to work at this fontsize than default (normal?)
 \footnotesize
 
 % TODO put these in groups and define per table, to be more clear + avoid conflicts?
 \newcolumntype{L}{>{\collectcell\lotus}l<{\endcollectcell}}
-%\newcolumntype{M}{>{\collectcell\MetaCyc}l<{\endcollectcell}}
-%\newcolumntype{M}{>{\collectcell\MetaCyc}p{1.8cm}<{\endcollectcell}}
 \newcolumntype{M}{>{\collectcell\MetaCyc}p{2.2cm}<{\endcollectcell}}
 
 % TODO allow breaking of href text in metacyc ID col
@@ -3134,39 +2631,12 @@ All compounds were purchased from Sigma-Aldrich.
 % to increase space between rows so structures don't overlap
 \renewcommand{\arraystretch}{3.0}
 
-% TODO TODO test if all \caption{}\label{} links from toc are broken now, or if it's just longtable specifically (and how to fix?)
 \begin{landscape}
 % TODO update M column def to try to break those long IDs, or make font size smaller?
-% TODO TODO TODO can i fix \SigmaAldrich -> G here? diff letter?
 \begin{longtable}{llp{0.9cm}PGMLT}
-%\begin{longtable}{llp{0.9cm}Pp{1.8cm}MLT}
-% TODO delete
-%\begin{longtable}{llp{0.9cm}Pp{1.8cm}MLZ}
-
-% this doesn't seem to work inside longtable
-% (\captionbacktorefs doesn't. \mycaptionof has special handling for longtable, w/ working backlink)
-%\captionbacktorefs{Odor information -- panel II}{table:odor_panel2} \\
-%
-%\caption{Odor information -- panel II}\label{table:odor_panel2} \\
-%\caption{Odor information -- panel II\label{table:odor_panel2}} \\
+% (\captionbacktorefs doesn't work inside longtable. \mycaptionof has special handling for it)
 \mycaptionof{table}{Odor information -- panel II}{}\label{table:odor_panel2} \\
 \toprule
-% TODO bold header?
-% TODO did this really increase compilation time that much? (yea, seems so.) bold each item individually? (yea)
-%{\bfseries Name & Abbrev. & \LogConcX & \multicolumn{1}{c}{CID} & $\text{Catalog No.}^{*}$ & \multicolumn{1}{l}{MetaCyc ID} & \multicolumn{1}{l}{LOTUS ID} & \multicolumn{1}{c}{Structure}} \\
-%Name & Abbrev. & \LogConcX & \multicolumn{1}{c}{CID} & $\text{Catalog No.}^{*}$ & \multicolumn{1}{l}{MetaCyc ID} & \multicolumn{1}{l}{LOTUS ID} & \multicolumn{1}{c}{Structure} \\
-% TODO TODO how to also get LogConcX to be bold?
-%\textbf{Name} & \textbf{Abbrev.} & \textbf{\LogConcX } & \multicolumn{1}{c}{\textbf{CID}} & $\text{\textbf{Catalog No.}}^{*}$ & \multicolumn{1}{l}{\textbf{MetaCyc ID}} & \multicolumn{1}{l}{\textbf{LOTUS ID}} & \multicolumn{1}{c}{\textbf{Structure}} \\
-%\textbf{Name} & \textbf{Abbrev.} & $\bm{\LogConcX}$ & \multicolumn{1}{c}{\textbf{CID}} & $\text{\textbf{Catalog No.}}^{*}$ & \multicolumn{1}{l}{\textbf{MetaCyc ID}} & \multicolumn{1}{l}{\textbf{LOTUS ID}} & \multicolumn{1}{c}{\textbf{Structure}} \\
-%
-% does not work (compilation errs)
-%\mathversion{bold}
-%\textbf{Name} & \textbf{Abbrev.} & \LogConcX & \multicolumn{1}{c}{\textbf{CID}} & $\text{\textbf{Catalog No.}}^{*}$ & \multicolumn{1}{l}{\textbf{MetaCyc ID}} & \multicolumn{1}{l}{\textbf{LOTUS ID}} & \multicolumn{1}{c}{\textbf{Structure}} \\
-%\mathversion{normal}
-%
-% TODO TODO why does this not actually bold \LogConcX?
-%\textbf{Name} & \textbf{Abbrev.} & $\mathbf{\LogConcX}$ & \multicolumn{1}{c}{\textbf{CID}} & $\text{\textbf{Catalog No.}}^{*}$ & \multicolumn{1}{l}{\textbf{MetaCyc ID}} & \multicolumn{1}{l}{\textbf{LOTUS ID}} & \multicolumn{1}{c}{\textbf{Structure}} \\
-%
 % TODO define this in a local header var, and re-use below?
 % any other way to only change caption, but share header in longtable?
 \textbf{Name} & \textbf{Abbrev.} & \LogConcXBold & \multicolumn{1}{c}{\textbf{CID}} & \multicolumn{1}{l}{$\text{\textbf{Catalog No.}}^{*}$} & \multicolumn{1}{l}{\textbf{MetaCyc ID}} & \multicolumn{1}{l}{\textbf{LOTUS ID}} & \multicolumn{1}{c}{\textbf{Structure}} \\
@@ -3179,11 +2649,6 @@ All compounds were purchased from Sigma-Aldrich.
 \toprule
 %
 % TODO is this appropriate use of asterisk? just omit? go back to some kind of footnote?
-%Name & Abbrev. & \LogConcX & \multicolumn{1}{l}{CID} & $\text{Catalog No.}^{*}$ & \multicolumn{1}{l}{MetaCyc ID} & \multicolumn{1}{l}{LOTUS ID} \\
-% NOTE: if i want to show structures here, would need to break across pages, as need to scale too small to not overlap, and can't really fit on one page
-%
-%Name & Abbrev. & \LogConcX & \multicolumn{1}{c}{CID} & $\text{Catalog No.}^{*}$ & \multicolumn{1}{l}{MetaCyc ID} & \multicolumn{1}{l}{LOTUS ID} & \multicolumn{1}{c}{Structure} \\
-%
 \textbf{Name} & \textbf{Abbrev.} & \LogConcXBold & \multicolumn{1}{c}{\textbf{CID}} & \multicolumn{1}{l}{$\text{\textbf{Catalog No.}}^{*}$} & \multicolumn{1}{l}{\textbf{MetaCyc ID}} & \multicolumn{1}{l}{\textbf{LOTUS ID}} & \multicolumn{1}{c}{\textbf{Structure}} \\
 \midrule
 \endhead
@@ -3230,9 +2695,6 @@ sabinene & sab & $-3$ & 18818 & \multicolumn{1}{l}{\href{https://www.targetmol.c
 %cis-4-heptenal & Z4-7al & $-4$ & 5362814 & pfo & W328901-SAMPLE-K &  & LTS0179204 \\
 %2-methylbutyl acetate & 2-mba & $-3$ & 12209 & pfo & W364401-SAMPLE-K & CPD-19624 & LTS0209792 \\
 %ethyl octanoate & EtOct & $-2$ & 7799 & pfo & 112321-5G & CPD-22379 & LTS0207229 \\
-%
-%\bottomrule
-%\end{tabular}
 \end{longtable}
 
 % TODO prob delete the center environment here? or handle differently?
@@ -3246,39 +2708,14 @@ All other compounds were purchased from Sigma-Aldrich.\\
 \end{center}
 
 \footnotetext[1]{Used water as a solvent instead of paraffin oil (pfo).}
-
-% TODO delete/restore
-%\end{adjustbox}
 \end{landscape}
-% NOTE: trying caption earlier now that i'm trying longtable
-%\captionbacktorefs{Odor information -- panel II}{table:odor_panel2}
-% TODO TODO TODO where to put this text now that i'm trying longtable? very end? how?
-% (trying in section before \endlastfoot above)
-%Geosmin was purchased from Perfumer Supply House.
-%Longifolene \& menthone were purchased from Fisher.
-%Sabinene was purchased from TargetMol.
-%All other compounds were purchased from Sigma-Aldrich.
-%\LogConcX{ }is the ($\log_{10}$) v/v concentration in-vial, prior to our typical 10x air dilution.
-
-% TODO restore? meh
-%\index{tables}
-%\end{table}
-
-% TODO TODO TODO restore
-% does work here, as long as we use `\begin{table}[H]` with `\clearpage` before this table (after odor_panel1 table)
-% TODO TODO or put before \end{landscape} now? (move it after footnotetext?)
-%\footnotetext[1]{Used water as a solvent instead of paraffin oil (pfo).}
 \endgroup
 
 % Figure S1 - Example volumetric diagnostic panel responses in one fly
 % {
-% doesn't seem like one outer landscape worked here. one per fig?
-% (also didn't work with one wrapping each fig)
-%\begin{landscape}
+% NOTE: \begin{landscape} didn't work here (neither one outer one, nor one per figure, outside or
+% inside longcapfigure), so the images are rotated instead
 \begin{longcapfigure}
-% also doesn't work here (page not rotated, graphic juts offset a bit to top right-ish)
-%\begin{landscape}
-% TODO need this?
 \centering
 % TODO TODO also use \begin{landscape} here instead (and have caption be part of textwidth then too prob)?
 %
@@ -3287,7 +2724,6 @@ All other compounds were purchased from Sigma-Aldrich.\\
 % the width=0.9\textheight seems limiting, and specifying height=\textwidth seems to not be preserving aspect ratio
 % NOTE: 0.9\textheight (w/ two lines of caption text) causes blank pages before each of these. 0.875 highest tried that does not.
 \includegraphics[width=0.875\textheight, angle=-90, origin=c]{s1_full_diagnostic_guide_page1}
-%\includegraphics[width=0.875\textheight, origin=c]{s1_full_diagnostic_guide_page1}
 % TODO what's the logic behind the "segmented glomeruli" betty decided to show? doesn't even include all the ones targeted directly by diagnostics (e.g. DL5), nor other ones labelled like DP1m (between it and the stuff to the left, should show all segmented. bit confusing)
 \mycaptionof{figure}{Example diagnostic odor volumetric ORN responses}{%
 All identified glomeruli are shown across left two columns.
@@ -3298,18 +2734,13 @@ Example responses of one fly to first 12 of 24 ``diagnostic'' odors.
 \end{longcapfigure}
 \begin{figure}[H]
 \ContinuedFloat
-% TODO need
 \centering
 \includegraphics[width=0.875\textheight, angle=-90, origin=c]{s1_full_diagnostic_guide_page2}
-% TODO delete. didn't fix landscape
-%\includegraphics[width=0.875\textheight, origin=c]{s1_full_diagnostic_guide_page2}
 \caption[]{\textbf{Example diagnostic odor volumetric ORN responses (continued).}
 Left two columns same as on previous page.
 Example responses of one fly to remaining 12 of 24 ``diagnostic'' odors.
 }
 \end{figure}
-% doesn't seem like one outer landscape worked here. one per fig?
-%\end{landscape}
 % }
 
 % Figure S2 - Diagnostic example mean response and all individual fly responses
@@ -3369,14 +2800,7 @@ The GH146-Gal4 driver we used for PN imaging only expresses in \textasciitilde70
 \end{longcapfigure}
 % }
 
-% TODO delete (no longer relevant since i changed split of captions below to force new page anyway)
-% does not prevent captions above from being on same page as fig below (maybe b/c endfloat?)
-%\clearpage
-
-% removing the H does not prevent this fig from starting on same page as captions above
 \begin{longcapfigure}
-% this causes horrific reordering
-%\begin{figure}[p]
 \includegraphics[width=\textwidth]{s4_hemibrain_fafb_hb-lh_overconvergence_NO-HEMIDRAW}
 %
 % TODO delete (if wanting to keep hemidraw and cosine distance supplemental panels F-H)
@@ -3427,9 +2851,6 @@ The ordering of glomeruli is the same in all matrices and was based on $k$-means
 \begin{longcapfigure}
 % TODO break B,C into a separate figure (so caption isn't so awkward, at least), with them arrange in one column?
 \includegraphics[width=\textwidth]{s5_apl-thr-sens_and_model-vs-kc-responsivity_WITH-HEMIDRAW}
-% TODO delete. prob want version with hemidraw above now
-%\includegraphics[width=\textwidth]{s5_apl-thr-sens_and_model-vs-kc-responsivity_NO-HEMIDRAW}
-%
 % TODO better caption?
 \mycaptionof{figure}{Model (vs observed) KC response rates and sensitivity analysis}{}
 \label{fig:s5}
@@ -3543,12 +2964,6 @@ Odor panel I (left) has a minimum of $n{=}4$ flies, while panel II (right) has a
 % TODO TODO or move to start? saw at least one in tarun's that i think did it more like that
 %\publishedas{RemyPreprint}
 
-% TODO TODO delete
-\else
-% this is just so there aren't warnings about broken references to chap:remypaper (if \iffalse above, instead of \iftrue)
-\chapter{Dummy chapter}
-\label{chap:remypaper}
-\fi
 %
 
 \chapter{Searching for principles explaining third-order olfactory neuron responses to simple and complex mixtures}
@@ -3687,17 +3102,6 @@ We clustered the responses in \Crefwithbackref{fig:clust_hierarch_binary} and \r
   % need 0.8 instead of 0.85\textheight here, unless i want to break caption to next page, or shorten it
   \includegraphics[width=0.44\textwidth,height=0.775\textheight]{clust_hierarch_kiwi_binary_trimmed}
   \includegraphics[width=0.52\textwidth,height=0.775\textheight]{clust_hierarch_control_binary_trimmed}
-  % TODO some way to fix these? doesn't work. (still overflows, as defined)
-  %\subfloat{\includegraphics[width=0.44\textwidth,height=\textheightminuscaption]{clust_hierarch_kiwi_binary_trimmed}}
-  %\subfloat{\includegraphics[width=0.52\textwidth,height=\textheightminuscaption]{clust_hierarch_control_binary_trimmed}}
-  %
-  % still doesn't work
-  %\subfloat{\includegraphics[width=0.44\textwidth,
-  %  height=\dimexpr\textheight - 4\baselineskip - \abovecaptionskip - \belowcaptionskip\relax
-  %]{clust_hierarch_kiwi_binary_trimmed}}
-  %\subfloat{\includegraphics[width=0.52\textwidth,
-  %  height=\dimexpr\textheight - 4\baselineskip - \abovecaptionskip - \belowcaptionskip\relax
-  %]{clust_hierarch_control_binary_trimmed}}
 \mycaptionof{figure}{Clustered KC responses to 2-component mix A \& B}{%
 % TODO include total # ROIs for all these (title just has # responding)
 The highest concentration (1x) has each component at the same concentration as in \cref{table:mix_odors}, and is the only subset of this data analyzed except for \cref{fig:mixsupp_dists_diag-binaries_kc-only,fig:mixsupp_dists_pair-dilutions}. The remaining two dilutions step each component down by a factor of 10 or 100.
@@ -3937,9 +3341,6 @@ The remaining fraction of cells, in response classes other than non-responders o
 & mix-responsive & 2.6\% & 3.6\%\\
 & mix-selective & 0.3\% & 0.5\%\\
 \hline
-% TODO delete
-% (i liked tabular better w/ everything else as-is. tabularx still wasn't bottom justifying the NComps and Response Type multirow columns, and other things were uglier)
-%\end{tabularx}
 \end{tabular}
 \mycaptionof{table}{KC response class percentages}{%
 The mix-responsive percentage includes the mix-selective cells, as well as those that also respond to components.
@@ -4024,8 +3425,6 @@ For these experiments we chose the following components: 2-heptanone, farnesol, 
 % {
 \begin{longcapfigure}
 \includegraphics[height=0.8\textheight]{clust_hierarch_diag-binaries}
-% overflows w/ current caption
-%\includegraphics[height=0.85\textheight]{clust_hierarch_diag-binaries}
 \mycaptionof{figure}{Clustered KC responses to binary mixtures of weak odors}{%
 % TODO move to methods -> ref here -> make full height again?
 % TODO TODO change title to only say n=12 once, since all odors are measured in all flies
@@ -4228,7 +3627,6 @@ Unlike the mix A \& B cases where we have ORN measurements for all the odors we 
 To still attempt to model the mixture responses of the three weak odors, we took the max across the two mean glomerular response vectors (from measured component data) to generate a synthetic mixture response.
 As justification for this approach, we checked the quality of this ORN mixture response approximation for some cases where we did have measurements for both the components and their mix, and the approximation seemed reasonable (data not shown).
 After feeding our ORN data (measured components and synthetic mixture) into the two models, we get the responses seen in \crefwithbackref{fig:clust_hierarch_model_diag-binaries}.
-% TODO fix \crefwithbackref to work w/ >1 inputs, if want to use that here
 For mix A \& B we use our ORN measurements as input, and running the same two models on that data produces the responses in \crefwithbackref{fig:clust_hierarch_model}.
 }
 % TODO TODO actually expand on this in methods
@@ -4586,8 +3984,6 @@ TNTin & placed at \textasciitilde\qty{30}{\degreeCelsius} for \textasciitilde3 d
 \begin{longcaptable}
 \centering
 \begin{tabularx}{\textwidth} {
- % TODO how to get bottom vertical alignment (at least for header)?
- % (well, have it for everything now, via \renewcommand{\tabularxcolumn}{b} in preamble)
  >{\centering\arraybackslash}X
  >{\centering\arraybackslash}X
  >{\centering\arraybackslash}X
@@ -4596,22 +3992,6 @@ TNTin & placed at \textasciitilde\qty{30}{\degreeCelsius} for \textasciitilde3 d
  >{\centering\arraybackslash}X
  >{\centering\arraybackslash}X
 }
-% can't do c{1cm}. seems to be left aligned w/ m
-% could redefine custom column type to take fixed width and also center, if i cared:
-% https://tex.stackexchange.com/questions/238018/tables-with-centered-columns-of-specific-width
-% TODO is this still exceeding total textwidth? seems close, if not
-%\begin{tabular}{m{0.9cm} m{1.35cm} c m{1.0cm} ccc}
-%
-% these "|" chars add vertical lines between columns. don't think i want here
-%\begin{tabular}{|c|c|c|c|c|c|c|}
-%
-% TODO (no) remove "total" from label here and usage elsewhere (since it's kinda not...)?
-% (actually, it is. maybe remove "filtered"?)
-% (would free up space for another col too maybe?)
-%Population & \NComps & Mix & \# flies & \# total ROIs & \# filtered\footnotemark[1]{} ROIs\\
-% TODO possible to reduce width of NComps column (it's ok if text of that header element overlaps w/ "weak binaries" text in adjacent "Mix" column)?
-%Cells & \NComps & Mix & \# flies & \# total ROIs & \# filtered\footnotemark[1]{} ROIs & By\\
-%
 % TODO try changing ROIs to be two subcolumns of one ROIs, w/ subcolumns "Total" and "Filtered"?
 Cells & \NComps & Mix & Flies & Total ROIs & Filtered\footnotemark[1]{} ROIs & By\\
 \hline
@@ -4647,8 +4027,6 @@ The imaging parameters above led to volumetric sampling rates of either \qty{0.3
 This means that the responses calculated below (with a window of two volumes) will contain the \qty{3}{\second} odor pulse and the one volume collected after that.
 
 \subsubsection{KCs}
-% TODO TODO can i redefine \paragraph so it isn't inline with text (and maybe formatted something other than bold?)
-% seems that it being inline is currently causing a lot of "overfull hbox" issues, in the lines that include it and text
 \paragraph{Mix A and B}
 This KC data was collected as in \autoref{chap:remypaper}, but using the same trial structure as the ORN recordings in this chapter.
 This KC dataset was collected by Jie-Yoon (Remy) Yang (R.Y.).
@@ -4749,9 +4127,6 @@ Although we had tuned to a target response rate of \textasciitilde10\% of this r
 % Model parameters (for many variants) sorted by mean mix suppression
 % {
 % TODO move to supplement, or keep in methods here?
-% TODO TODO TODO why this not showing? (oh, is order just screwed up b/c this is the only thing using H (and i suppose since everything was doing that in remypaper section, i didn't notice, but maybe page numbers in "List of Illustrations" were still incorrect there?)?
-% alternative to H, if that was the issue?
-% (it currently gets put on a page between figs 1.4 and 1.5 [it is 1.34] *overlapping* w/ other stuff)
 \begin{longcapfigure}
 \centering
 \includegraphics[height=0.9\textheight]{models-with-params_sorted-by-mean-mixsupp}
@@ -4770,11 +4145,6 @@ None of the ``bouton'' models, which have separate bouton units and \APLBouton w
 \label{fig:models-with-params_sorted-by-mean-mixsupp}
 \end{longcapfigure}
 % }
-
-% TODO delete clearpage here? was this causing above float to not be processed in processdelayedfloats call?
-% (now below instead of before methods)
-% (no, still don'ot seem to have it...)
-%\clearpage
 
 \subsubsection{Processing connectome data}
 \label{sssec:connectome_weights}
@@ -4855,7 +4225,6 @@ The ``normalized'' model mean response starts with the logistic-scaled spike cou
 % TODO bold everything?
 \textbf{Mix} & \textbf{Name} & \textbf{Abbrev.} & \LogConcXBold\footnotemark[1]{} & \multicolumn{1}{l}{\textbf{CID}} & \multicolumn{1}{l}{\textbf{Structure}} \\
 \hline
-%\midrule
   & paraffin oil & pfo & & & \multicolumn{1}{c}{} \\
 \hline
 \multirow{6}{*}{A}
@@ -5081,33 +4450,10 @@ There is ongoing work in the lab to characterize the response of this neuron to 
 
 \newpage
 
-% TODO delete, if i end up using longtable for diagnostic odor table (leaning towards that)
-% TODO put in group with below?
-%\sidecaptionvpos{table}{c}
-
 \begin{landscape}
-% TODO delete, if i end up using longtable for diagnostic odor table (leaning towards that)
-%\begin{SCtable}
-%\floatbox[{\capbeside\thisfloatsetup{capbesideposition={right,center},capbesidewidth=.25\linewidth}}]{table}[\FBwidth]{
-%\floatbox[{\capbeside]{table}
-%{\captionbacktorefs{Diagnostic odors used to assist in identifying and segmenting glomeruli}{table:diagnostic_odors}}%
-%See \cref{fig:s1} for example volumetric responses to this full panel in one fly from \autoref{chap:remypaper}.
-%See left side of \cref{fig:orn_mean_responses} for some example mean responses to these odors.
-
-% TODO delete? floatbox replace need for this? (prob not gonna use that)
 \begin{longcaptable}
 
-% TODO delete
-%\centering
-
 % TODO try multipage longtable instead of rotating? https://www.overleaf.com/learn/latex/Tables
-%\begin{adjustbox}{angle=90}
-% U->l
-%
-% TODO delete, if i end up using longtable for diagnostic odor table (leaning towards that)
-%\begin{minipage}{10cm}
-%
-% TODO TODO just switch this to a longtable and be done with it?
 \begin{tabular}{llcllU}
 % TODO also include where we ordered from (or sigma product IDs + links, for the vast majority [all?] where that's where we ordered from)?
 %Common name & $\log_{10} \text{concentration}$ & \parbox{2cm}{Target glomerulus} & Solvent & PubChem ID\\
@@ -5142,32 +4488,19 @@ phenylacetaldehyde & paa & -5 & VL2a & pfo & 998\\
 fenchone & fench & -5 & VC1 & pfo & 82229\\
 \hline
 \end{tabular}
-% TODO delete, if i end up using longtable for diagnostic odor table (leaning towards that)
-%\end{minipage}
-% TODO how to get this to not show to the right of the table? (fixed?)
-% and how to get a table label for it? (since it seems to be an issue to use the begin/end table inside adjustbox)
-%\end{adjustbox}
 
 \mycaptionof{table}{Diagnostic odors used to assist in identifying and segmenting glomeruli}{}
 % TODO also refer to full volume images if i include those? (in remypaper supplemental figures now. 2 pages)
 % TODO compare hyperlink's \autoref and cleveref \cref for this and tables?
-% TODO TODO need text below to actually be part of caption above for it to work w/ sidecap?
 %See \cref{fig:s1} for example volumetric responses to this full panel in one fly from \autoref{chap:remypaper}.
 %See left side of \cref{fig:orn_mean_responses} for some example mean responses to these odors.
 \label{table:diagnostic_odors}
 \index{tables}
-%}
 \end{longcaptable}
-% TODO delete, if i end up using longtable for diagnostic odor table (leaning towards that)
-%\end{SCtable}
 % TODO mention we chose nearest log10 v/v dilution when picking mix B odor concentrations (for approximate intensity matching)?
 % TODO TODO mention boosting ethanol and why (and from what measured value?). in footnote here or in text?
 
-% TODO why is this not working? bad interaction between adjustbox and footnote placement?
-%\footnotetext{In-vial v/v concentration, before additional (almost always 10x) dilution in air.}
 \footnotetext[1]{In-vial v/v concentration.}
-% produced compilation error
-%\enlargethispage{\baselineskip}
 \end{landscape}
 
 % TODO want either of these
