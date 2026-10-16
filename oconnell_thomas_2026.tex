@@ -530,6 +530,20 @@
 % position=top doesn't actually seem to do anything... same as =bottom
 %\captionsetup{parbox=none,singlelinecheck=false,position=top}
 
+% for per-panel captions (A, B, ...) under the main caption of a figure (see \mysubcaption below).
+% formatted like the main caption text, w/ a bold "A)" label, each starting on its own line.
+% skip (+ the nonzero \parskip from caltech_thesis.cls) gives about the one blank line that was between
+% panels when they were paragraphs ending in \\ in the main caption.
+\usepackage{subcaption}
+\newlength\subcaptionskip
+\setlength\subcaptionskip{0.3\baselineskip}
+\DeclareCaptionLabelFormat{rparen}{#2)}
+\captionsetup[sub]{font=normalsize, labelfont=bf, labelformat=rparen, labelsep=space,
+  justification=justified, singlelinecheck=false, parbox=none, margin=0pt,
+  position=bottom, skip=\subcaptionskip, list=false}
+\renewcommand\thesubfigure{\Alph{subfigure}}
+\renewcommand\thesubtable{\Alph{subtable}}
+
 % NOTE: manually specifying \begin{figure}[htbp] for all calls did not seem to fix some stuff not fittiing on pages when using endfloat enabled. see screenshots from 2026-08-15 ~5pm
 %
 % Google AI recommended way to automatically apply [htbp] to figure calls by default
@@ -674,13 +688,64 @@
 % TODO could make everything H if i feel necessary, but i think for now i'd
 % prefer the option to have things placed in line more easily by disabling
 % endfloat
-\newenvironment{longcapfigure}{\begin{center}}{\end{center}}
+%
+% \my@captype is the type for \mysubcaption (see below), since \@captype is only defined in floats.
+\makeatletter
+\newenvironment{longcapfigure}{\begin{center}\def\my@captype{figure}}{\end{center}}
+\makeatother
 \DeclareDelayedFloatFlavor{longcapfigure}{figure}
 
 % same thing for tables (non-floating, so caption can break across pages).
 % NOTE: not registered w/ \DeclareDelayedFloatFlavor, since endfloat is loaded w/ figuresonly
 % (tables stay in-line). if that changes, add: \DeclareDelayedFloatFlavor{longcaptable}{table}
-\newenvironment{longcaptable}{\begin{center}}{\end{center}}
+\makeatletter
+\newenvironment{longcaptable}{\begin{center}\def\my@captype{table}}{\end{center}}
+\makeatother
+
+% caption for one panel of a figure (or table), placed after the \mycaptionof{...}\label{...} of the
+% whole figure. #1 is the panel label as printed (without the ")"), e.g. A, B, Bi, Bii. given explicitly
+% (rather than counting A, B, C, ...) since some figures have panels like Bi/Bii with no B.
+% a \label right after this refers to the panel (e.g. \cref{fig:5:Bi} -> "Fig. 2.5Bi").
+%
+% usage:
+%   \mycaptionof{figure}{<title>}{<text about the whole figure>}
+%   \label{fig:x}
+%   \mysubcaption{A}{<text about panel A>}
+%   \mysubcaption{B}{<text about panel B>}
+%
+% \subcaption needs a caption type, which (outside of floats) is set here, in a group, rather than for the
+% whole longcapfigure/longcaptable, since setting it also changes the spacing around the main caption.
+% caption warns unless the sub-caption is in a group nested inside the one where the type is set.
+\makeatletter
+\providecommand\my@captype{\@captype}
+\ExplSyntaxOn
+\NewDocumentCommand{\mysubcaption}{m +m}
+  {
+    \peek_meaning_remove_ignore_spaces:NTF \label
+      { \__my_subcap:nnn {#1} {#2} }
+      { \__my_subcap:nnn {#1} {#2} { } }
+  }
+\tl_new:N \l__my_subcap_flags_tl
+\cs_new_protected:Npn \__my_subcap:nnn #1#2#3
+  {
+    \group_begin:
+      % setting the type also clears caption's (global) flags, including the one saying the main caption
+      % was already made, w/o which \subcaption steps the figure/table counter (as it would for
+      % sub-captions above the main caption), so they are saved and restored around it
+      \tl_set:Ne \l__my_subcap_flags_tl { \int_use:c { c@caption@flags } }
+      \exp_args:Ne \captionsetup { type = \my@captype }
+      \setcounter { caption@flags } { \l__my_subcap_flags_tl }
+      \group_begin:
+        \cs_set:cpn { thesub \@captype } {#1}
+        % (short title needed if #2 has a blank line / \par, since caption's anchor code can't take
+        % that. there are no list of figures entries for these anyway, w/ list=false above)
+        \subcaption [#1] {#2}
+        \tl_if_blank:nF {#3} { \label {#3} }
+      \group_end:
+    \group_end:
+  }
+\ExplSyntaxOff
+\makeatother
 
 % https://tex.stackexchange.com/questions/24496/use-caption-and-long-description-for-figure
 %\newcommand{\mycaption}[2]{\caption[#1]{\textbf{#1.} #2}}
@@ -742,6 +807,9 @@
 % if it doesn't fit w/ the usual space between figure/table and caption (caption skip=20pt, set above),
 % that space is shrunk (down to \my@capminskip) before giving up and moving the caption to the next page.
 % \my@capslack is extra room required beyond the measured height, to allow for measurement error.
+%
+% any \mysubcaption calls (and their \label's) right after the \mycaptionof{...}\label{...} are collected
+% (into \my@subcaps) and measured along w/ it, so the panel captions also stay w/ the figure if they all fit.
 % NOTE: not done for the longtable version below, where the caption is the first row of the table.
 \newsavebox\my@capbox
 \newlength\my@capslack
@@ -760,7 +828,10 @@
     \setbox\my@capbox=\vbox{%
       \hsize=\linewidth \linewidth=\hsize
       \normalfont\normalsize \parindent=\z@
-      \textbf{\@nameuse{my@origfnum@#1}: }\textbf{#2.} #3\par}%
+      \textbf{\@nameuse{my@origfnum@#1}: }\textbf{#2.} #3\par
+      % (\parskip is also added between these paragraphs, as for the real subcaptions)
+      \long\def\mysubcaption##1##2{\vskip\subcaptionskip\textbf{##1)} ##2\par}%
+      \my@subcaps}%
     \global\setbox\my@capbox=\box\my@capbox
   \endgroup}
 \newcommand\my@captionof[3]{%
@@ -788,7 +859,9 @@
 \newcommand\my@captionofbackref[4]{%
   \my@setnextbackref{#1}{#4}%
   \my@captionof{#1}{#2}{#3}%
-  \label{#4}}
+  \label{#4}%
+  \my@subcaps}
+\newcommand\my@subcaps{}
 % longtable versions. longtable has already stepped its counter by the time we are in its rows.
 % these are called inside a \noalign group (see \mycaptionof below), which they must close before \caption.
 %
@@ -840,8 +913,51 @@
 \NewDocumentCommand{\my@mycaptionof}{m m +m}
   {
     \peek_meaning_remove_ignore_spaces:NTF \label
-      { \use:c {my@captionofbackref} {#1} {#2} {#3} }
-      { \use:c {my@captionof} {#1} {#2} {#3} }
+      { \__my_cap_withlabel:nnnn {#1} {#2} {#3} }
+      { \__my_cap_collect:n { \use:c {my@captionof} {#1} {#2} {#3} \use:c {my@subcaps} } }
+  }
+\cs_new_protected:Npn \__my_cap_withlabel:nnnn #1#2#3#4
+  { \__my_cap_collect:n { \use:c {my@captionofbackref} {#1} {#2} {#3} {#4} } }
+% collects following \mysubcaption{..}{..} / \label{..} (skipping blank lines) into \my@subcaps, then
+% runs #1 (which outputs them, after the caption)
+\tl_new:N \l__my_cap_after_tl
+\bool_new:N \l__my_cap_par_bool
+\cs_new_protected:Npn \__my_cap_collect:n #1
+  {
+    \tl_set:Nn \l__my_cap_after_tl {#1}
+    \tl_set:cn {my@subcaps} { }
+    \bool_set_false:N \l__my_cap_par_bool
+    \__my_cap_loop:
+  }
+\cs_new_protected:Npn \__my_cap_loop:
+  {
+    \peek_meaning_remove_ignore_spaces:NTF \par
+      { \bool_set_true:N \l__my_cap_par_bool \__my_cap_loop: }
+      {
+        \peek_meaning_remove_ignore_spaces:NTF \mysubcaption
+          { \__my_cap_grab_sub:nn }
+          {
+            \peek_meaning_remove_ignore_spaces:NTF \label
+              { \__my_cap_grab_label:n }
+              {
+                \tl_use:N \l__my_cap_after_tl
+                % put back (one of) any blank lines removed after the last one
+                \bool_if:NT \l__my_cap_par_bool { \par }
+              }
+          }
+      }
+  }
+\cs_new_protected:Npn \__my_cap_grab_sub:nn #1#2
+  {
+    \tl_put_right:cn {my@subcaps} { \mysubcaption {#1} {#2} }
+    \bool_set_false:N \l__my_cap_par_bool
+    \__my_cap_loop:
+  }
+\cs_new_protected:Npn \__my_cap_grab_label:n #1
+  {
+    \tl_put_right:cn {my@subcaps} { \label {#1} }
+    \bool_set_false:N \l__my_cap_par_bool
+    \__my_cap_loop:
   }
 \NewDocumentCommand{\my@LTmycaptionof@}{m m +m}
   {
@@ -1767,15 +1883,20 @@ We investigated how odor coding in the fly olfactory circuit balances these comp
 % TODO TODO restore?
 %\captionbacktorefs[Population representations of odor in the fly MB at cellular resolution]{}{fig:1}
 %\captionbacktorefs[Population representations of odor in the fly MB at cellular resolution]{%
-\mycaptionof{figure}{Population representations of odor in the fly MB at cellular resolution}{%
-\textbf{A)} $t$-SNE embedding of 109 odors based on the patterns of activity they elicit across 24 fly ORs in the Hallem dataset.
+\mycaptionof{figure}{Population representations of odor in the fly MB at cellular resolution}{}
+\label{fig:1}
+
+\mysubcaption{A}{%
+$t$-SNE embedding of 109 odors based on the patterns of activity they elicit across 24 fly ORs in the Hallem dataset.
 A subset (open gray symbols) spanning the odor space was selected for measurement in the MB.
 (continued on next page)
+}
+
 % TODO happy with this?
-\textbf{B)} Imaging volumes comprising \textasciitilde11 planes through the KC soma layer capture the activity of >85\% of KCs in an MB (top), or \numrange{9}{10} planes covering all \textasciitilde50 glomeruli in the AL (middle).
+\mysubcaption{B}{%
+Imaging volumes comprising \textasciitilde11 planes through the KC soma layer capture the activity of >85\% of KCs in an MB (top), or \numrange{9}{10} planes covering all \textasciitilde50 glomeruli in the AL (middle).
 %}{fig:1}
 }
-\label{fig:1}
 %\end{figure}
 %\end{minipage}
 
@@ -1928,33 +2049,44 @@ Thus, these models predict that odor relationships encoded in third-order olfact
 % {
 \begin{longcapfigure}
 \includegraphics[width=\textwidth]{2}
-\mycaptionof{figure}{MB representational space is structured and invariant across individuals}{%
-\textbf{A)} Correlation distance matrices for four different flies showing pairwise relationships between KC population responses in individual odor trials (upper triangles) or in trial-averaged responses for each odor (lower triangle).\\
+\mycaptionof{figure}{MB representational space is structured and invariant across individuals}{}
+\label{fig:2}
 
-\textbf{B)} Correlation distance between trial-averaged KC responses for every odor pair for the four flies in \textbf{(A)}.
+\mysubcaption{A}{%
+Correlation distance matrices for four different flies showing pairwise relationships between KC population responses in individual odor trials (upper triangles) or in trial-averaged responses for each odor (lower triangle).
+}
+
+\mysubcaption{B}{%
+Correlation distance between trial-averaged KC responses for every odor pair for the four flies in \textbf{(A)}.
 Odor pairs are shown in the same order in each row, arranged by their mean correlation distance across the four flies.
-Odors that evoke similar KC response patterns in one fly tend to also elicit similar response patterns in other flies.\\
+Odors that evoke similar KC response patterns in one fly tend to also elicit similar response patterns in other flies.
+}
 
 % TODO TODO is this actually the (sorted) rows of B? (maybe it's a bit redundant if we are just talking about sorting as part of spearmans? but is that correct?)
-\textbf{C)} Spearman's rank correlation between the rows of \textbf{(B)} (i.e., between flies), evaluating the similarity of the rank ordering of odor pairs between flies according to their representational distance in KCs.\\
+\mysubcaption{C}{%
+Spearman's rank correlation between the rows of \textbf{(B)} (i.e., between flies), evaluating the similarity of the rank ordering of odor pairs between flies according to their representational distance in KCs.
+}
 
 % TODO TODO still need this now that i'm putting all in captions? will captions be broken appropriately? (or can i easily get them to be?)
 %\iffalse
-\textbf{D)}
+\mysubcaption{D}{%
 Left: same as \textbf{(C)}, but for shuffled data where odor responses were randomized by permuting the columns of the cell x odor response matrix for each fly.
 The matrix shows the mean Spearman's correlation across \num{10000} shuffles.
 Right: observed Spearman's correlation (black) and the mean and 95\% CI of the Spearman's correlation across \num{10000} shuffles (gray) for each fly pair.
-Red dotted line marks the mean observed Spearman's correlation ($\rho{=}0.76$).\\
+Red dotted line marks the mean observed Spearman's correlation ($\rho{=}0.76$).
+}
 
-\textbf{E)} Matrix of pairwise correlation distances (over odors) between every KC in the four flies in \textbf{(A)} that responded to at least one odor.
+\mysubcaption{E}{%
+Matrix of pairwise correlation distances (over odors) between every KC in the four flies in \textbf{(A)} that responded to at least one odor.
 The distance matrix was ordered by spectral clustering on the mean odor response vector of each cell.
-Each response cluster contained KCs from every fly.\\
+Each response cluster contained KCs from every fly.
+}
 
 % TODO TODO do similar clustering (/my own response class sorting) of model KCs responding to megamat, to compare model vs KC cells? (+ my own response class sorting of remy's KC megamat responses)
-\textbf{F)} Mean odor response profiles across KCs in each response cluster for each fly.
+\mysubcaption{F}{%
+Mean odor response profiles across KCs in each response cluster for each fly.
 KCs with conserved odor tuning profiles were found in every MB.
 }
-\label{fig:2}
 \end{longcapfigure}
 %\fi
 % }
@@ -1982,9 +2114,15 @@ These results demonstrate that the structure of the representational space of od
 \begin{longcapfigure}
 \includegraphics[width=\textwidth]{3}
 % TODO has this (or any other) working caption label changed?
-\mycaptionof{figure}{Odor relationships in MB representational space deviate from predicted relationships in a random feedforward network}{%
-\textbf{A)} Schematic of the fly olfactory network.
-\textbf{B)} Comparison of odor-pair correlation distances ($1 -\text{Pearson's } r$) in the uniform KC model with those in observed ORN coding space (black symbols; $n{=}136$ pairs from 17 odors).
+\mycaptionof{figure}{Odor relationships in MB representational space deviate from predicted relationships in a random feedforward network}{}
+\label{fig:3}
+
+\mysubcaption{A}{%
+Schematic of the fly olfactory network.
+}
+
+\mysubcaption{B}{%
+Comparison of odor-pair correlation distances ($1 -\text{Pearson's } r$) in the uniform KC model with those in observed ORN coding space (black symbols; $n{=}136$ pairs from 17 odors).
 % TODO TODO also update working text to not say mean is over a different # of MBs than the errorbars
 Each circular marker is the mean across 20 simulated mushroom bodies (MBs); each MB had an independently generated PN–KC connectivity matrix in which every glomerulus was drawn with equal probability.
 % TODO double check this isn't actually what figure is still showing
@@ -1992,30 +2130,37 @@ Each circular marker is the mean across 20 simulated mushroom bodies (MBs); each
 Error bars within each marker are 95\% CI across these 20 simulated MBs.
 Red dashed line shows unity.
 The uniform model systematically decorrelated odor pairs, most strongly for odor pairs that are similar in ORN space, while closely preserving the rank ordering of ORN odor–odor distances (Spearman's $\rho{=}0.98$, $p{=}\num{8.8e-98}$, 90\% CI \numrange{0.97}{0.99}).
+}
 
 % TODO is S2A actually correct in remy/betty's current supplemental fig numbering? (doesn't seem so) (delete S2A stuff unless remy produces a figure / table  that has this. i made my own S7 for this)
 % TODO and is my s7 making same point as intended with this reference (showing N per pair)?
 % (i assume so?)
-\textbf{C)} Top: Scatter plot of correlation distances (mean and 95\% CI) between KC responses for each odor pair, averaged across all flies in which the odor pair was sampled ($n{=}4{-}18$ flies, see Supplemental \Crefwithbackref{fig:s7}). %see Supplemental Figure 2A).
+\mysubcaption{C}{%
+Top: Scatter plot of correlation distances (mean and 95\% CI) between KC responses for each odor pair, averaged across all flies in which the odor pair was sampled ($n{=}4{-}18$ flies, see Supplemental \Crefwithbackref{fig:s7}). %see Supplemental Figure 2A).
 A one-way ANOVA showed there was a significant difference in the odor–odor correlation distance between different odor pairs ($F\text{-statistic}{=}17.57$, $p{=}\num{1.1e-187}$), consistent with odor–odor relationships being reliable across MBs in different flies.
 The correlation distances between predicted KC responses for odor pairs in the uniform and hemibrain models are plotted for reference (see \textbf{Dii}).
 For the uniform model, error bars are 95\% CI across the first 20 instantiations of the model.
 Odor pairs are ordered by the difference between observed and uniform-model distances.
 % TODO delete this line if i update plot colors (see below)
 Lower: bar plots show the difference between observed and model KC correlation distances (observed - model) for each odor pair, for the uniform (top) and hemibrain (bottom) connectivities.
+}
+
 % TODO TODO restore this line if i update the colors to match, as remy did
 %Lower: bar plots show the difference between observed and model KC correlation distances (observed - model) for each odor pair, for the uniform (top, blue) and hemibrain (bottom, green) connectivities.
 
-\textbf{D)} Matrix of pairwise correlation distances ($1 - \text{Pearson's } r$) between:
+\mysubcaption{D}{%
+Matrix of pairwise correlation distances ($1 - \text{Pearson's } r$) between:
 \textbf{i)} observed ORN responses;
 \textbf{ii)} (left) predicted KC responses in the uniform model (left) or hemibrain model (right); or
 \textbf{iii)} observed KC responses
 for 17 odors.
 % TODO cite ann's paper as previous case that does this? or say how it's similar to dropping silent KCs (or do we not [explicitly...]?)?
 Model KCs that responded to none of the odors were excluded from correlation calculations.
+}
 
 % NOTE: my figure still has E and F swapped, relative to remy's last version, but i think she's on board to change it
-\textbf{E)} Comparison of observed and modeled KC odor spaces: each scatterplot shows correlation distance ($1 - \text{Pearson's }r$) between KC responses to each odor pair, modeled versus observed.
+\mysubcaption{E}{%
+Comparison of observed and modeled KC odor spaces: each scatterplot shows correlation distance ($1 - \text{Pearson's }r$) between KC responses to each odor pair, modeled versus observed.
 \textbf{i)} Uniform model, in which every glomerulus is equally likely to connect to each KC.
 \textbf{ii)} Hemibrain model, which uses PN-KC connections from the hemibrain EM dataset.
 Each point represents one odor pair ($n{=}136$); observed KC distances are averaged across flies ($n{=}4{-}18$); uniform model KC distances are averaged across 100 instantiations of the model.
@@ -2025,11 +2170,12 @@ uniform model, $\rho{=}0.64$ (90\% CI \numrange{0.55}{0.71}; $p{=}\num{7.1e-17}$
 hemibrain model, $\rho{=}0.71$ (90\% CI \numrange{0.62}{0.77}; $p{=}\num{8.0e-22}$).
 % TODO TODO is this CI (on the rho) actually from bootstrapping across odors pairs? check code
 CIs were computed from a bootstrap over odor pairs.
+}
 
-\textbf{F)} Observed fraction of KCs (mean and 95\% CI) responding to the indicated number of odors for a panel containing 17 odors.
+\mysubcaption{F}{%
+Observed fraction of KCs (mean and 95\% CI) responding to the indicated number of odors for a panel containing 17 odors.
 The distributions of the fraction of modeled KCs responding to different numbers of odors in the uniform and hemibrain models (as in \textbf{(Dii}) are plotted for comparison.
 }
-\label{fig:3}
 \end{longcapfigure}
 % }
 
@@ -2083,35 +2229,47 @@ To assess the possible impact of structured olfactory input on MB odor represent
 \begin{longcapfigure}
 % don't really need \centering since using full textwidth, and don't want it for captions anyway (esp to be consistent w/ continuation on next page)
 \includegraphics[width=\textwidth]{4}
-\mycaptionof{figure}{Reorganization of odor representations in the fly MB reflects odor relationships in natural sources}{%
-\textbf{A)} Distribution of odors (monomolecular compounds) in a literature-based database of the volatile headspace composition of many natural food odor sources.
-The pie chart shows the distribution of odor sources in each food category.\\
+\mycaptionof{figure}{Reorganization of odor representations in the fly MB reflects odor relationships in natural sources}{}
+\label{fig:4}
 
-\textbf{B)} Schematic summary of datasets for comparing the properties of odors (top) with their different neural representations (bottom).
+\mysubcaption{A}{%
+Distribution of odors (monomolecular compounds) in a literature-based database of the volatile headspace composition of many natural food odor sources.
+The pie chart shows the distribution of odor sources in each food category.
+}
+
+\mysubcaption{B}{%
+Schematic summary of datasets for comparing the properties of odors (top) with their different neural representations (bottom).
 % TODO did we define ECFP earlier? should we?
 Top left, each odor is represented as a binary ECFP fingerprint; structural dissimilarity between odor compounds is computed as the Jaccard distance between fingerprint vectors.
 Top right, odor compounds were embedded by hyperbolic MDS ($D{=}3$) to fit odor–odor dissimilarities computed as $1-\text{Pearson's }r$ between natural-source feature vectors.
-The Poincaré disk shows all 452 embedded compounds (light blue), with the 17 odors used in \textbf{C--F} highlighted (orange).\\
+The Poincaré disk shows all 452 embedded compounds (light blue), with the 17 odors used in \textbf{C--F} highlighted (orange).
+}
 
 % TODO happy with this?
-\textbf{C)} Non-neural odor–odor dissimilarity matrices for the 17 odors, with odors in the same order as matrices in \Cref{fig:3}D, computed on:
+\mysubcaption{C}{%
+Non-neural odor–odor dissimilarity matrices for the 17 odors, with odors in the same order as matrices in \Cref{fig:3}D, computed on:
 \textbf{(Ci)} chemical structures, as Jaccard distance between binary ECFP fingerprint, and
-\textbf{(Cii)} natural source space, as hyperbolic distance between embedded compound distributions from VCF.\\
+\textbf{(Cii)} natural source space, as hyperbolic distance between embedded compound distributions from VCF.
+}
 
-\textbf{D)} Summary of correlations (upper) and corrected $p$-values (lower) for comparisons between observed ORN, observed KC, or modeled KC (uniform or hemibrain) odor–odor relationships and those in chemical space (Jaccard distance between ECFP fingerprints) or natural source space (hyperbolic distance in the embedded VCF space).
+\mysubcaption{D}{%
+Summary of correlations (upper) and corrected $p$-values (lower) for comparisons between observed ORN, observed KC, or modeled KC (uniform or hemibrain) odor–odor relationships and those in chemical space (Jaccard distance between ECFP fingerprints) or natural source space (hyperbolic distance in the embedded VCF space).
 Pearson's $r$ (left) and Spearman's $\rho$ (right); $n{=}136$ odor pairs.
-$p$-values from $t$-test, corrected by Benjamini-Hochberg.\\
+$p$-values from $t$-test, corrected by Benjamini-Hochberg.
+}
 
-\textbf{E)} Bootstrapped difference of correlations between odor–odor distances in observed ORN coding space and in observed or modeled KCs (uniform or hemibrain), against chemical fingerprint distances (green) and embedded natural source distances (orange).
+\mysubcaption{E}{%
+Bootstrapped difference of correlations between odor–odor distances in observed ORN coding space and in observed or modeled KCs (uniform or hemibrain), against chemical fingerprint distances (green) and embedded natural source distances (orange).
 Pearson's $r$ (top) and Spearman's $\rho$ (bottom) correlations are shown for \num{5000} resampling draws of the 136 odor pairs with replacement, with 90\% CI ; boxes, interquartile range and mean; whiskers, CI.
-Positive values indicate that a KC space is more closely aligned to the reference space (chemical structure or natural source)\\
+Positive values indicate that a KC space is more closely aligned to the reference space (chemical structure or natural source)
+}
 
-\textbf{F)} Observed KC odor–odor dissimilarities vs. observed ORN odor–odor dissimilarities ($n{=}136$ pairs).
+\mysubcaption{F}{%
+Observed KC odor–odor dissimilarities vs. observed ORN odor–odor dissimilarities ($n{=}136$ pairs).
 Colors indicate hyperbolic distance between odors in the embedded natural source space.
 Dashed line shows OLS fit; marginal histograms show distribution of dissimilarities along each axis.
 Odor pairs that are close in embedded natural source space tend to fall below the fit: they are more similar in KC coding space than their ORN distances would predict.
 }
-\label{fig:4}
 \end{longcapfigure}
 % }
 
@@ -2174,53 +2332,73 @@ The exception was a small increase in correlation with natural sources under Pea
 \mycaptionof{figure}{Odor relationships in KC soma track metabolic and natural source relationships more closely than those in ORN terminals}{%
 % TODO reword "All panels", since A doesn't?
 All panels show a second 17-odor panel chosen to span a range of known metabolic distances in the MetaCyc database.
-All distance matrices show the 17 odors in the same order.\\
+All distance matrices show the 17 odors in the same order.
+}
+\label{fig:5}
+
 % TODO delete?
 %Odors are in the same order from B--G.
  
-\textbf{A)} Example MetaCyc pathways that produce odors in the panel.
+\mysubcaption{A}{%
+Example MetaCyc pathways that produce odors in the panel.
 Panel compound names are shown in color, non-panel compounds names are shown in black.
 Pathways are linked when a product of one is a reactant of the other.
 Pathway boundaries are indicated by boxes and correspond to the pathways shown in \textbf{(Bi)}.
-Superpathways, which group pathways with common metabolites or which carry out a common biological function, are not shown here but are included as pathway nodes when the network is constructed.\\
+Superpathways, which group pathways with common metabolites or which carry out a common biological function, are not shown here but are included as pathway nodes when the network is constructed.
+}
 
 % TODO should subfig labelling be bold, both in A) and in A reference in-line below (and throughout)
 % (Neuron does not, at least not in Endo2020. they do however have parens around in-line refs)
 % our preprint DOES though, and i think i probably prefer it
-\textbf{Bi)} Metabolic distance between odorants.
+\mysubcaption{Bi}{%
+Metabolic distance between odorants.
 Left, filled circles indicate pathway membership of panel compounds in the MetaCyc pathways shown in \textbf{(A)}.
 Right, the distance between two compounds within the network of pathways that produce them was computed as the sum of distances from the pathways containing each compound and their lowest common ancestor (pathway LCA distance). %\\
+}
+
 % NOTE: currently still need to omit the \\ at end of line above, in order for all this text to fit on one page
 % (or at least, without triggering previous page to be blank)
 
-\textbf{Bii)} Odor-odor distances in ORN terminals (top) and KC somata (bottom) against metabolic pathway distances as shown in \textbf{(Bi)}.
-Each point indicates an odor pair; and boxes indicate medians and IQRs; the line shows a linear fit.\\
+\mysubcaption{Bii}{%
+Odor-odor distances in ORN terminals (top) and KC somata (bottom) against metabolic pathway distances as shown in \textbf{(Bi)}.
+Each point indicates an odor pair; and boxes indicate medians and IQRs; the line shows a linear fit.
+}
 
-\textbf{C)}
+\mysubcaption{C}{%
 \textbf{i)} Chemical structural distance between odor compounds, computed as the Jaccard distance between binary ECFP6 fingerprint vectors.
 
 \textbf{ii-iii)} Odor-odor distances in natural source spaces, computed as the cosine distance between binary source feature vectors (1 if the compound appears in a given source, 0 if not), using:
 \textbf{ii)} The VCF database, where sources are foods.
-\textbf{iii)} The LOTUS Natural Products database, where sources are organisms.\\
+\textbf{iii)} The LOTUS Natural Products database, where sources are organisms.
+}
+
 %
 %Ciii) Odor-odor distances in natural source space, computed from the LOTUS Natural Products database of structure-organism pairs (i.e. chemical compounds and the living organisms in which they were found).
 %distances were computed as the cosine distance between binary organism feature vectors (1 if the compound was identified in a given organism, 0 if not).
 
-\textbf{D)} Odor-odor distances in observed neural representations in ORN terminals (left, $n{=}5$ flies) and KC somata (right, $n{=}20$ flies).
-Distances were computed as ($1 - \text{Pearson's } r$) between trial-averaged peak amplitude population responses; distances were then averaged across flies.\\
- 
-\textbf{E)} Odor-odor distances for simulated KC responses, under two models of PN-KC connectivity: uniform (left), in which each KC draws its inputs independently from a uniform distribution across glomeruli, and hemibrain (right), in which the PN-KC weights are derived from synapse counts in the hemibrain EM dataset.\\
- 
-\textbf{F)} Pearson's $r$ (top) and their corrected $p$-values (bottom) between odor-odor distances in four neural spaces (observed ORN terminals, observed KC somata, and uniform/hemibrain model KCs) (rows), against chemical structure space (ECFP) and three natural source spaces (LOTUS, MetaCyc, VCF) (columns).
-$n{=}136$ odor pairs, two-sided $t$-test, corrected by Benjamini-Hochberg.\\
+\mysubcaption{D}{%
+Odor-odor distances in observed neural representations in ORN terminals (left, $n{=}5$ flies) and KC somata (right, $n{=}20$ flies).
+Distances were computed as ($1 - \text{Pearson's } r$) between trial-averaged peak amplitude population responses; distances were then averaged across flies.
+}
 
-\textbf{G)} Distributions of Pearson's $r$ between odor-odor distances in ORN terminals or KC somata (observed and modeled) (rows) against chemical (ECFP, green) or metabolic (orange, pathway LCA) distances for \num{5000} random subsamples of 80\% of the 136 odor pairs, computed without replacement.\\
- 
-\textbf{H)} Difference between KC somata and ORN terminals in their Pearson correlation with each reference space $X$ ($r(\text{KC}, X) - r(\text{ORN}, X)$), for chemical (ECFP), metabolic (MetaCyc), and natural source (LOTUS, VCF) distance.
+\mysubcaption{E}{%
+Odor-odor distances for simulated KC responses, under two models of PN-KC connectivity: uniform (left), in which each KC draws its inputs independently from a uniform distribution across glomeruli, and hemibrain (right), in which the PN-KC weights are derived from synapse counts in the hemibrain EM dataset.
+}
+
+\mysubcaption{F}{%
+Pearson's $r$ (top) and their corrected $p$-values (bottom) between odor-odor distances in four neural spaces (observed ORN terminals, observed KC somata, and uniform/hemibrain model KCs) (rows), against chemical structure space (ECFP) and three natural source spaces (LOTUS, MetaCyc, VCF) (columns).
+$n{=}136$ odor pairs, two-sided $t$-test, corrected by Benjamini-Hochberg.
+}
+
+\mysubcaption{G}{%
+Distributions of Pearson's $r$ between odor-odor distances in ORN terminals or KC somata (observed and modeled) (rows) against chemical (ECFP, green) or metabolic (orange, pathway LCA) distances for \num{5000} random subsamples of 80\% of the 136 odor pairs, computed without replacement.
+}
+
+\mysubcaption{H}{%
+Difference between KC somata and ORN terminals in their Pearson correlation with each reference space $X$ ($r(\text{KC}, X) - r(\text{ORN}, X)$), for chemical (ECFP), metabolic (MetaCyc), and natural source (LOTUS, VCF) distance.
 Positive values indicate a stronger correlation in KCs.
 Distributions come from \num{5000} subsamples of 80\% of the 136 odor pairs, as in \textbf{(G)}.
 }
-\label{fig:5}
 \end{longcapfigure}
 % }
 
@@ -2263,13 +2441,18 @@ Interestingly, while the modeled results effectively capture the weakened relati
 % {
 \begin{longcapfigure}
 \includegraphics[width=\textwidth]{6}
-\mycaptionof{figure}{Reformatting of odor representations across four stages of olfactory processing}{%
-\textbf{A)} Anatomical schematic of fly olfactory circuit.
+\mycaptionof{figure}{Reformatting of odor representations across four stages of olfactory processing}{}
+\label{fig:6}
+
+\mysubcaption{A}{%
+Anatomical schematic of fly olfactory circuit.
 ORN axon terminals are organized in a stereotyped glomerular map in the AL.
-Each uniglomerular PN has dendrites in a single AL glomerulus and projects to the calyx of the MB, where its axonal arbor terminates in multiple boutons that each synapse with KC input claws.\\
+Each uniglomerular PN has dendrites in a single AL glomerulus and projects to the calyx of the MB, where its axonal arbor terminates in multiple boutons that each synapse with KC input claws.
+}
 
 % TODO TODO TODO update text. it's only mean, not peak, for at least ORN and PN dendrites, right?
-\textbf{B)} Representative baseline fluorescence and peak \DeltaFOverF\, heatmaps of odor-evoked calcium signals in ORN axon terminals, PN dendrites, PN boutons, KC claws, and KC somata to 1-pentanol, 1-hexanol, and ethyl propionate.
+\mysubcaption{B}{%
+Representative baseline fluorescence and peak \DeltaFOverF\, heatmaps of odor-evoked calcium signals in ORN axon terminals, PN dendrites, PN boutons, KC claws, and KC somata to 1-pentanol, 1-hexanol, and ethyl propionate.
 KC data are reproduced from \cref{fig:1}.
 Scale bar, \qty{10}{\micro\metre}.\\
 % TODO TODO just refer to table for all these full genotypes?
@@ -2280,28 +2463,35 @@ PN boutons were imaged in GH146-Gal4/20xUAS-IVS-jGCaMP8m (II).
 % TODO TODO TODO did remy actually use a jGCaMP8m on both II and III (as was indicated in my version of her table), or was it always on II, like prat mentioned?
 % (assuming below is her original text (and is correct), her table was wrong)
 KC claws were imaged in 20xUAS-IVS-jGCaMP8m/+ (II); OK107-Gal4/+ (IV).
-KC soma were imaged in 20xUAS-nls-OpGCaMP6s-p10/+ (III); OK107-Gal4/+ (IV).\\
+KC soma were imaged in 20xUAS-nls-OpGCaMP6s-p10/+ (III); OK107-Gal4/+ (IV).
+}
 
-\textbf{C)} Matrix of mean pairwise correlation distances (averaged across flies) of trial-averaged odor representations in ORN axons ($n{=}9$ flies), PN dendrites ($n{=}6$ flies), PN boutons ($n{=}6$ flies), and KC somata ($n{=}4{-}18$ flies; see \cref{fig:s7}) to a panel of 17 odors.
-Odors are displayed in the same order in each matrix according to the clustering of their representations in KC representational space.\\
+\mysubcaption{C}{%
+Matrix of mean pairwise correlation distances (averaged across flies) of trial-averaged odor representations in ORN axons ($n{=}9$ flies), PN dendrites ($n{=}6$ flies), PN boutons ($n{=}6$ flies), and KC somata ($n{=}4{-}18$ flies; see \cref{fig:s7}) to a panel of 17 odors.
+Odors are displayed in the same order in each matrix according to the clustering of their representations in KC representational space.
+}
 
-\textbf{D)} Odor representations are correlated across stages of the olfactory pathway.
+\mysubcaption{D}{%
+Odor representations are correlated across stages of the olfactory pathway.
 Top: Pearson's $r$ (left) and Spearman's $\rho$ (right) between the across-fly mean odor-odor dissimilarity matrices \textbf{(C)} of ORN terminals, PN boutons, KC claws, and KC soma, and two model KC populations (uniform and hemibrain).
 % TODO be consistent about "corrected by B-H" vs "B-H FDR-corrected"?
 Correlations between each of the neural representation spaces were computed over the $n{=}136$ odor pair combinations (17 odors).
-Bottom: corresponding two-sided $p$-values, Benjamini-Hochberg FDR-corrected.\\
+Bottom: corresponding two-sided $p$-values, Benjamini-Hochberg FDR-corrected.
+}
 
-\textbf{E)} Comparison of each stage's odor representation to two reference spaces: chemical structure space computed from extended-connectivity fingerprints (``Chem (ECFP)'') and the natural source space in a hyperbolic embedding (``VCF hyp.'').
-Pearson's $r$ (left block) and Spearman's $\rho$ (right block) between the mean odor-odor distances in each neural space and the odor-odor distances in each reference space (red) with Benjamini-Hochberg FDR-corrected two-sided $p$-values (blue); $n{=}136$ odor pairs, gray values indicate $p\,{\geq}\,0.05$.\\
+\mysubcaption{E}{%
+Comparison of each stage's odor representation to two reference spaces: chemical structure space computed from extended-connectivity fingerprints (``Chem (ECFP)'') and the natural source space in a hyperbolic embedding (``VCF hyp.'').
+Pearson's $r$ (left block) and Spearman's $\rho$ (right block) between the mean odor-odor distances in each neural space and the odor-odor distances in each reference space (red) with Benjamini-Hochberg FDR-corrected two-sided $p$-values (blue); $n{=}136$ odor pairs, gray values indicate $p\,{\geq}\,0.05$.
+}
 
-\textbf{F)} Bootstrap distributions of the change in reference-space correlation relative to ORN axons at successive downstream stages of the olfactory pathway.
+\mysubcaption{F}{%
+Bootstrap distributions of the change in reference-space correlation relative to ORN axons at successive downstream stages of the olfactory pathway.
 Left: Pearson's $\Delta{}r = r(\text{olfactory stage}, \text{space}) - r(\text{ORN axons}, \text{space})$, right: Spearman's $\Delta\rho$, obtained by resampling the 136 odor pairs with replacement (\num{5000} iterations).
 Boxes show mean and interquartile range; whiskers, 90\% CI.
 The dashed line indicates no difference from ORN axons.
 Green, chemical (ECFP) reference space; orange, natural source reference space (embedded VCF distances).
 Values right of zero indicate closer correspondence to that reference space than ORN axons; left, weaker.
 }
-\label{fig:6}
 \end{longcapfigure}
 % }
 
@@ -3113,9 +3303,10 @@ Example responses of one fly to first 12 of 24 ``diagnostic'' odors.
 \includegraphics[width=0.875\textheight, angle=-90, origin=c]{s1_full_diagnostic_guide_page2}
 % TODO delete. didn't fix landscape
 %\includegraphics[width=0.875\textheight, origin=c]{s1_full_diagnostic_guide_page2}
-\caption[]{Example diagnostic odor volumetric ORN responses (continued)}
+\caption[]{\textbf{Example diagnostic odor volumetric ORN responses (continued).}
 Left two columns same as on previous page.
 Example responses of one fly to remaining 12 of 24 ``diagnostic'' odors.
+}
 \end{figure}
 % doesn't seem like one outer landscape worked here. one per fig?
 %\end{landscape}
@@ -3126,20 +3317,24 @@ Example responses of one fly to remaining 12 of 24 ``diagnostic'' odors.
 \begin{longcapfigure}
 \centering
 \includegraphics[height=0.875\textheight]{s2_diagnostic_example}
-\mycaptionof{figure}{Example per-glomerulus diagnostic odor responses and variation across flies}{%
+\mycaptionof{figure}{Example per-glomerulus diagnostic odor responses and variation across flies}{}
+\label{fig:s2}
+
 % TODO was this the same fly as in previous figure? say so, if so
-\textbf{A)} Trial-mean responses to the diagnostic panel in one example fly.
+\mysubcaption{A}{%
+Trial-mean responses to the diagnostic panel in one example fly.
 The first 24 rows are the odors presented in this fly, sorted by which glomerulus they are intended to target, with the responses in these target glomeruli boxed along the diagonal.
-The remaining rows are glomeruli that were identified based on the context provided by the responses to the diagnostic odors, combined with the expected shape and position of the glomeruli\cite{ALAtlas}.\\
+The remaining rows are glomeruli that were identified based on the context provided by the responses to the diagnostic odors, combined with the expected shape and position of the glomeruli\cite{ALAtlas}.
+}
 
 % TODO TODO change language to clarify that filtering was WITHIN panel (>= half)
-\textbf{B)} Trial-mean responses to the diagnostic panel for all 40 glomeruli identified in $\geq\!\text{half}$ of ORN terminal flies (across the two odor panels).
+\mysubcaption{B}{%
+Trial-mean responses to the diagnostic panel for all 40 glomeruli identified in $\geq\!\text{half}$ of ORN terminal flies (across the two odor panels).
 Excitatory responses in particular are typically quite stereotyped across flies.
 However, some glomeruli (e.g. DM1 and DP1m) respond weakly and to many odors, with the overall activation strength partially dependent on the particular fly.
 After the first seven flies (all from the first odor panel), we changed the concentration of aphe from $10^{-5}$ to $10^{-4}$, to elicit stronger responses in the VA3 glomerulus this odor targets.
 The first two flies are missing data for vac.
 }
-\label{fig:s2}
 \end{longcapfigure}
 % }
 
@@ -3151,17 +3346,26 @@ The first two flies are missing data for vac.
 \mycaptionof{figure}{Per-glomerulus response means, SDs, and sample sizes}{%
 All panels contain the per-glomerulus response means (top), SDs (middle) and sample size (\# flies) (bottom).
 All mean response plots share the same colorbar limits, and share the non-negative portion of the colorbar with the SD plots.
-\textbf{A)} ORN terminal responses to the diagnostic panel, from flies across both of the experimental panels.
+}
+\label{fig:s3}
 
-\textbf{B)} ORN terminal responses to odor panel one.
+\mysubcaption{A}{%
+ORN terminal responses to the diagnostic panel, from flies across both of the experimental panels.
+}
 
-\textbf{C)} ORN terminal responses to odor panel two.
+\mysubcaption{B}{%
+ORN terminal responses to odor panel one.
+}
 
-\textbf{D)} PN dendrite responses to odor panel one.
+\mysubcaption{C}{%
+ORN terminal responses to odor panel two.
+}
+
+\mysubcaption{D}{%
+PN dendrite responses to odor panel one.
 % TODO 70% of glomeruli or of PNs? matter? (say PNs elsewhere, in original text that said 70%)
 The GH146-Gal4 driver we used for PN imaging only expresses in \textasciitilde70\% of glomeruli\cite{GH146}, hence the smaller number of glomeruli identified.
 }
-\label{fig:s3}
 \end{longcapfigure}
 % }
 
@@ -3180,32 +3384,42 @@ The GH146-Gal4 driver we used for PN imaging only expresses in \textasciitilde70
 %\includegraphics[width=\textwidth]{s4_hemibrain_fafb_hb-lh_overconvergence_WITH-HEMIDRAW}
 % (adapted from preprint caption)
 %
-\mycaptionof{figure}{The structure of olfactory glomerular inputs to third-order olfactory neurons}{%
+\mycaptionof{figure}{The structure of olfactory glomerular inputs to third-order olfactory neurons}{}
+\label{fig:s4}
+
 % TODO need to adapt any of these preprint captions?
 % TODO TODO why do we redefine KC and LHN here but not PN? be consistent
-\textbf{A)} Example reconstruction from the hemibrain connectome\cite{Hemibrain} of a uniglomerular DM2 PN and two example postsynaptic partners, a Kenyon cell (KC) and a lateral horn neuron (LHN).
-Synaptic connections between identified neurons contained within the hemibrain volume are fully described.\\
+\mysubcaption{A}{%
+Example reconstruction from the hemibrain connectome\cite{Hemibrain} of a uniglomerular DM2 PN and two example postsynaptic partners, a Kenyon cell (KC) and a lateral horn neuron (LHN).
+Synaptic connections between identified neurons contained within the hemibrain volume are fully described.
+}
 
 % TODO need to adapt any of these preprint captions?
 % TODO can i really not just condense B/C/D into one letter? care?
 % Prat recommended these FAFB citations, and in this order
-\textbf{B)} For each third-order olfactory neuron, the set of glomeruli providing direct presynaptic input via PNs was extracted from connectome datasets (hemibrain and FAFB)\cite{Hemibrain,FAFB0,FAFB1,FAFB2}.
-For this analysis, synaptic connections were binarized (e.g., all glomerular inputs >5 synapses were treated equally regardless of synapse count).\\
+\mysubcaption{B}{%
+For each third-order olfactory neuron, the set of glomeruli providing direct presynaptic input via PNs was extracted from connectome datasets (hemibrain and FAFB)\cite{Hemibrain,FAFB0,FAFB1,FAFB2}.
+For this analysis, synaptic connections were binarized (e.g., all glomerular inputs >5 synapses were treated equally regardless of synapse count).
+}
 
-\textbf{C)} The mapping of glomerular inputs to KCs was represented as a binary matrix, where a 1 in $\text{cell}_{i,j}$ indicates that neuron $i$ receives input from glomerulus $j$.
-The `Curveball' algorithm was used to generate random matrices (null model) that preserve the row and column totals of the original matrix\cite{CurveballMatrixRandomization}.\\
+\mysubcaption{C}{%
+The mapping of glomerular inputs to KCs was represented as a binary matrix, where a 1 in $\text{cell}_{i,j}$ indicates that neuron $i$ receives input from glomerulus $j$.
+The `Curveball' algorithm was used to generate random matrices (null model) that preserve the row and column totals of the original matrix\cite{CurveballMatrixRandomization}.
+}
 
-\textbf{D)} For each pair of glomeruli, a distribution of the number of KCs receiving co-input from the two glomeruli in each shuffled matrix was generated.
+\mysubcaption{D}{%
+For each pair of glomeruli, a distribution of the number of KCs receiving co-input from the two glomeruli in each shuffled matrix was generated.
 The observed number of KCs receiving co-input from each pair of glomeruli in the hemibrain was compared to this distribution to generate a $z$-score.
-An example distribution and $z$-score for the over-convergent glomerular pair DM1 and DM3 are given.\\
+An example distribution and $z$-score for the over-convergent glomerular pair DM1 and DM3 are given.
+}
 
 % Prat recommended these FAFB citations, and in this order
-\textbf{E)} Glomerular input structure to KCs in the hemibrain MB\cite{Hemibrain} (left), KCs in the FAFB MB\cite{FAFB0,FAFB1,FAFB2} (center), and LHNs in the hemibrain LH (right).
+\mysubcaption{E}{%
+Glomerular input structure to KCs in the hemibrain MB\cite{Hemibrain} (left), KCs in the FAFB MB\cite{FAFB0,FAFB1,FAFB2} (center), and LHNs in the hemibrain LH (right).
 The $z$-score for each pair of glomeruli measures the degree to which the glomeruli are over- or under-convergent in the observed population, compared to null models.
 A large positive value indicates strong over-convergence, and a large negative value indicates strong under-convergence.
 The ordering of glomeruli is the same in all matrices and was based on $k$-means clustering of the hemibrain MB matrix. 
 }
-\label{fig:s4}
 \end{longcapfigure}
 
 % Figure S5 - Model APL/threshold sensitivity analysis, KC vs model response rates[, hemidraw]
@@ -3217,26 +3431,36 @@ The ordering of glomeruli is the same in all matrices and was based on $k$-means
 %\includegraphics[width=\textwidth]{s5_apl-thr-sens_and_model-vs-kc-responsivity_NO-HEMIDRAW}
 %
 % TODO better caption?
-\mycaptionof{figure}{Model (vs observed) KC response rates and sensitivity analysis}{%
+\mycaptionof{figure}{Model (vs observed) KC response rates and sensitivity analysis}{}
+\label{fig:s5}
+
 % TODO TODO TODO actualy refer to A,B,D,E in text (maybe just methods?)
 % currently only talk about C
-\textbf{A)} Matrix of pairwise correlation distances ($1 - \text{Pearson's } r$) between predicted KC responses in the `hemidraw' model for the 17 odors in odor panel one.
-Each KC in this model variant independently draws 7 glomerular inputs (as the `uniform' model), but with the probability of drawing each glomerulus determined by the PN-KC synapse counts in the hemibrain connectome (see Methods).\\
+\mysubcaption{A}{%
+Matrix of pairwise correlation distances ($1 - \text{Pearson's } r$) between predicted KC responses in the `hemidraw' model for the 17 odors in odor panel one.
+Each KC in this model variant independently draws 7 glomerular inputs (as the `uniform' model), but with the probability of drawing each glomerulus determined by the PN-KC synapse counts in the hemibrain connectome (see Methods).
+}
 
-\textbf{B)} Comparison of observed and `hemidraw' model KC odor-odor correlation distances, for odor panel one (as \cref{fig:3}E does for `uniform' and `hemibrain' models).
+\mysubcaption{B}{%
+Comparison of observed and `hemidraw' model KC odor-odor correlation distances, for odor panel one (as \cref{fig:3}E does for `uniform' and `hemibrain' models).
 Each point represents one odor pair ($n{=}136$); observed KC distances are averaged across flies ($n{=}4{-}18$); hemidraw model KC distances are averaged across 100 instantiations of the model.
 The line shows the linear fit between modeled and observed distances, with 95\% CI of the fit shaded (from a bootstrap over odor pairs).
 % TODO TODO is this CI (on the rho) actually from bootstrapping across odors pairs? check code
-The Spearman's $\rho$ between the hemidraw model and observed KC distances is $0.57$ (90\% CI 0.47--0.67; $p{=}\num{3.2e-13}$).\\
+The Spearman's $\rho$ between the hemidraw model and observed KC distances is $0.57$ (90\% CI 0.47--0.67; $p{=}\num{3.2e-13}$).
+}
+
 % TODO delete? and in fig:3 above too?
 %CIs were computed from a bootstrap over odor pairs.
 
 % TODO refer to thresholding details? say model cells were considered as responding if they spiked at least once?
 % TODO how to format roman numeral?
-\textbf{C)} Response rates to odor panel one in KCs and in uniform, hemibrain, and hemidraw model KCs.\\
+\mysubcaption{C}{%
+Response rates to odor panel one in KCs and in uniform, hemibrain, and hemidraw model KCs.
+}
 
 % TODO TODO rename "APL inhibition" (-> "scale of KC<->APL weights") in plot (since it's also the KC->APL drive)
-\textbf{D)} Sensitivity analysis sweeping KC spike threshold (a constant relative to spontaneous input each KC receives) and scale of \APLKC weights.
+\mysubcaption{D}{%
+Sensitivity analysis sweeping KC spike threshold (a constant relative to spontaneous input each KC receives) and scale of \APLKC weights.
 Model with ``tuned'' values for KC threshold and APL weight scales are in the center of the grid, with threshold stepped across rows and APL weight scale stepped across columns.
 APL weight is not stepped to the same extent in the decreasing direction, because the \APLKC weights can not be negative, but APL inhibition is completely disabled in this 0-weight case.
 % TODO roman numeral formatting for odor panel I?
@@ -3248,14 +3472,15 @@ Each panel has the tuned values re-plotted (from the center panel) in gray for r
 % TODO TODO move some of this to method or something?
 % TODO reword? delete
 The higher step for the threshold and APL weight scale can each, individually, bring the KC response rates down dramatically.
-Only a single digit number of KCs responds to each odor in both increased APL weight scale cases, and in the bottom right (where the threshold is also increased) one odor (\BCit) evokes no KC responses.\\
+Only a single digit number of KCs responds to each odor in both increased APL weight scale cases, and in the bottom right (where the threshold is also increased) one odor (\BCit) evokes no KC responses.
+}
 
 % TODO TODO retry w/ computation including non-responders (and then also add some noise?) (and compare against KC calculation that also includes non-responders)
-\textbf{E)} Odor-odor correlations (within KCs responding to at least one odor) at the same steps as in \textbf{(D)}.
+\mysubcaption{E}{%
+Odor-odor correlations (within KCs responding to at least one odor) at the same steps as in \textbf{(D)}.
 Observed decorrelation is not achieved even with extreme values for these two parameters, where very few KCs are responding.
 % TODO mention relationship between the two weights here, or just in methods?
 }
-\label{fig:s5}
 \end{longcapfigure}
 
 \begin{longcapfigure}
@@ -3266,25 +3491,33 @@ Observed decorrelation is not achieved even with extreme values for these two pa
 % TODO is this the only place where SD for megamat corrs are shown? (think so) (and do we even show them for validation2 anywhere then?)
 % delete A if shown elsewhere?
 % TODO better caption?
-\mycaptionof{figure}{Neural RDM SDs and changes of neural alignment with chemical/natural-source spaces relative to ORNs}{%
-\textbf{A)} Odor-odor correlation distances ($1 - \text{Pearson's } r$) between odor representations in ORN terminals ($n{=}9$), PN dendrites ($n{=}7$), PN boutons ($n{=}6$), KC claws ($n{=}4$), and KC somata ($n{=}4{-}18$).
+\mycaptionof{figure}{Neural RDM SDs and changes of neural alignment with chemical/natural-source spaces relative to ORNs}{}
+\label{fig:s6}
+
+\mysubcaption{A}{%
+Odor-odor correlation distances ($1 - \text{Pearson's } r$) between odor representations in ORN terminals ($n{=}9$), PN dendrites ($n{=}7$), PN boutons ($n{=}6$), KC claws ($n{=}4$), and KC somata ($n{=}4{-}18$).
 Top row, mean Pearson correlations across flies.
 Upper triangle: trial-trial correlations.
 Lower triangle, correlation between trial-averaged odor representations.
-Bottom row, standard deviation of Pearson correlations across flies, with upper and lower triangles arranged as in the top row.\\
+Bottom row, standard deviation of Pearson correlations across flies, with upper and lower triangles arranged as in the top row.
+}
 
-\textbf{B)} Change in each stage's correspondence with chemical structure (left, green) and natural source (right, orange), relative to ORN terminals: $\Delta = corr(\text{stage}, \text{reference}) - corr(\text{ORN terminals}, \text{reference})$.
+\mysubcaption{B}{%
+Change in each stage's correspondence with chemical structure (left, green) and natural source (right, orange), relative to ORN terminals: $\Delta = corr(\text{stage}, \text{reference}) - corr(\text{ORN terminals}, \text{reference})$.
 Each correlation is computed across the 136 odor pairs between each stage's mean odor-odor dissimilarity (\Cref{fig:6}C) and the reference space distances.
 Rows: PN boutons, KC claws, KC somata, and modeled KCs (uniform and hemibrain).
 The reference spaces are grouped by column: left (green) plots show correspondence with chemical structure space (computed from ECFP fingerprint distances); right (orange) plots show correspondence with natural-source space, with distances computed from a 3-D hyperbolic embedding of compounds based on their occurrence in the Volatile Compounds in Food database.
 Both Pearson's $\Delta r$ (upper row) and Spearman's $\Delta \rho$ (lower row) are shown; dashed line indicates no change from ORN terminals.
-Boxes indicate the mean and interquartile range; whiskers show central 90\% of each resampling distribution.\\
-
-\textbf{Bi)} Bootstrap, with \num{5000} draws of the 136 odor pairs with replacement, using the same odor pairs for each stage and the ORN terminals when computing.\\
-
-\textbf{Bii)} Subsampling, with \num{5000} draws of 80\% of odor pairs without replacement.
+Boxes indicate the mean and interquartile range; whiskers show central 90\% of each resampling distribution.
 }
-\label{fig:s6}
+
+\mysubcaption{Bi}{%
+Bootstrap, with \num{5000} draws of the 136 odor pairs with replacement, using the same odor pairs for each stage and the ORN terminals when computing.
+}
+
+\mysubcaption{Bii}{%
+Subsampling, with \num{5000} draws of 80\% of odor pairs without replacement.
+}
 \end{longcapfigure}
 
 % NOTE: this may be a table in text, but i think i want it as a figure for thesis at least
@@ -3452,8 +3685,8 @@ We clustered the responses in \Crefwithbackref{fig:clust_hierarch_binary} and \r
 \begin{longcapfigure}
   \centering
   % need 0.8 instead of 0.85\textheight here, unless i want to break caption to next page, or shorten it
-  \subfloat{\includegraphics[width=0.44\textwidth,height=0.775\textheight]{clust_hierarch_kiwi_binary_trimmed}}
-  \subfloat{\includegraphics[width=0.52\textwidth,height=0.775\textheight]{clust_hierarch_control_binary_trimmed}}
+  \includegraphics[width=0.44\textwidth,height=0.775\textheight]{clust_hierarch_kiwi_binary_trimmed}
+  \includegraphics[width=0.52\textwidth,height=0.775\textheight]{clust_hierarch_control_binary_trimmed}
   % TODO some way to fix these? doesn't work. (still overflows, as defined)
   %\subfloat{\includegraphics[width=0.44\textwidth,height=\textheightminuscaption]{clust_hierarch_kiwi_binary_trimmed}}
   %\subfloat{\includegraphics[width=0.52\textwidth,height=\textheightminuscaption]{clust_hierarch_control_binary_trimmed}}
@@ -3480,8 +3713,8 @@ See Methods for hierarchical clustering details.
 \begin{longcapfigure}
   \centering
   % height=0.9\textheight caused caption to overflow
-  \subfloat{\includegraphics[width=0.44\textwidth,height=0.85\textheight]{clust_hierarch_kiwi_5comp_trimmed}}
-  \subfloat{\includegraphics[width=0.53\textwidth,height=0.85\textheight]{clust_hierarch_control_5comp_trimmed}}
+  \includegraphics[width=0.44\textwidth,height=0.85\textheight]{clust_hierarch_kiwi_5comp_trimmed}
+  \includegraphics[width=0.53\textwidth,height=0.85\textheight]{clust_hierarch_control_5comp_trimmed}
 \mycaptionof{figure}{Clustered KC responses to 5-component mix A \& B}{%
 % TODO include total # ROIs for all these (title just has # responding) (just ref to that table:sample_sizes now)
 % TODO add something to methods section about clustering details (all using clustermap defaults [metric='euclidean', method='average']  (which just change defaults to scipy.cluster.hierarchy.linkage (and then my call adds optimal_ordering=True to that)
@@ -4011,11 +4244,11 @@ For mix A \& B we use our ORN measurements as input, and running the same two mo
 \begin{longcapfigure}
   \centering
   % way to add title centered over each subfloat (to label mix A/B here?) (have in input now anyway)
-  \subfloat{\includegraphics[width=0.43\textwidth,height=0.9\textheight]{clust_hierarch_kiwi_model-claw_trimmed}}
+  \includegraphics[width=0.43\textwidth,height=0.9\textheight]{clust_hierarch_kiwi_model-claw_trimmed}
   \hfill
   \vrule
   \hfill
-  \subfloat{\includegraphics[width=0.50\textwidth,height=0.9\textheight]{clust_hierarch_control_model-claw_trimmed}}
+  \includegraphics[width=0.50\textwidth,height=0.9\textheight]{clust_hierarch_control_model-claw_trimmed}
 \mycaptionof{figure}{Clustered model KC responses to mix A \& B}{%
 % TODO talk about spike counts and logistic scale here?
 % TODO talk about how it includes both binary and five-comp (or split out)?
