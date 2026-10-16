@@ -100,6 +100,12 @@
 \usepackage[group-separator={,}]{siunitx}
 
 \sisetup{range-phrase=--, range-units=single}
+% per-mode=symbol: e.g. \qty{2}{\litre\per\minute} -> "2 L/min" (rather than "2 L min^-1")
+% product-units=single: e.g. \qtyproduct{150 x 150}{\micro\metre} -> "150 x 150 um" (rather than "150 um x 150 um")
+\sisetup{per-mode=symbol, product-units=single}
+% not SI units, so not predefined by siunitx
+\DeclareSIUnit\molar{M}
+\DeclareSIUnit\osmole{Osm}
 
 % for concentration notation square brackets
 % https://tex.stackexchange.com/questions/407195/
@@ -671,12 +677,180 @@
 \newenvironment{longcapfigure}{\begin{center}}{\end{center}}
 \DeclareDelayedFloatFlavor{longcapfigure}{figure}
 
+% same thing for tables (non-floating, so caption can break across pages).
+% NOTE: not registered w/ \DeclareDelayedFloatFlavor, since endfloat is loaded w/ figuresonly
+% (tables stay in-line). if that changes, add: \DeclareDelayedFloatFlavor{longcaptable}{table}
+\newenvironment{longcaptable}{\begin{center}}{\end{center}}
+
 % https://tex.stackexchange.com/questions/24496/use-caption-and-long-description-for-figure
-% TODO TODO start trying to move all captions to this... (rather than text after caption at end of table/figure environments)
 %\newcommand{\mycaption}[2]{\caption[#1]{\textbf{#1.} #2}}
 %\newcommand{\mycaptionof}[3]{\captionof{#1}[#2]{\textbf{#2.} #3}}
 \NewDocumentCommand{\mycaption}{m +m}{\caption[#1]{\textbf{#1.} #2}}
-\NewDocumentCommand{\mycaptionof}{m m +m}{\captionof{#1}[#2]{\textbf{#2.} #3}}
+
+% Backlinks from "Figure/Table <n>" in captions to the first reference (made w/ \crefwithbackref, etc).
+%
+% \fnum@figure / \fnum@table are wrapped once, to link to numback:<label> if a label was registered for
+% the current figure/table number (in \my@backref@<type>@<number>). this avoids needing to restore
+% \fnum@<type> after each caption (which is awkward in longtable, and \fnum@ can be expanded more than
+% once per caption, e.g. when caption measures it).
+%
+% outside of draft mode, the link is only made if the previous run (via the .aux file) found a target for
+% it (an explicit \crefwithbackref{<label>} / etc, or an automatic one from the first \cref/\Cref, see
+% "Automatic backlinks" below). otherwise the link would go to page 1. in draft mode, the link is always
+% made, so missing targets show up red (see \hyperlinkd).
+\makeatletter
+% #1: label, #2: original \fnum@<type> output
+\newcommand\my@fnumlink[2]{%
+  \ifdraft
+    \hyperlinkd{numback:#1}{#2}%
+  \else
+    \ifcsname my@br@hastarget@#1\endcsname
+      \hyperlinkd{numback:#1}{#2}%
+    \else
+      #2%
+    \fi
+  \fi}
+\newcommand\my@wrapfnum[1]{%
+  \expandafter\let\csname my@origfnum@#1\expandafter\endcsname\csname fnum@#1\endcsname
+  \@namedef{fnum@#1}{%
+    \ifcsname my@backref@#1@\csname the#1\endcsname\endcsname
+      \my@fnumlink{\csname my@backref@#1@\csname the#1\endcsname\endcsname}{\@nameuse{my@origfnum@#1}}%
+    \else
+      \@nameuse{my@origfnum@#1}%
+    \fi}}
+\AtBeginDocument{\my@wrapfnum{figure}\my@wrapfnum{table}}
+% #1: type, #2: number (as \the<type>), #3: label
+%
+% also records (in .aux) that #3 is the label of a caption w/ a backlink, so that the next run knows to
+% make an automatic backlink target for it (see "Automatic backlinks" below).
+\newcommand\my@setbackref[3]{%
+  \expandafter\xdef\csname my@backref@#1@#2\endcsname{#3}%
+  \if@filesw\immediate\write\@auxout{\string\my@br@caption{#3}}\fi}
+% for the number the *next* caption of type #1 will get (since \caption/\captionof step the counter)
+\newcommand\my@setnextbackref[2]{%
+  \addtocounter{#1}{1}%
+  \edef\my@tempnum{\csname the#1\endcsname}%
+  \addtocounter{#1}{-1}%
+  \my@setbackref{#1}{\my@tempnum}{#2}}
+
+% keeps the whole caption on the same page as the figure/table if it fits in the space left below it.
+% otherwise, the caption starts at the top of the next page (rather than being split, with only the
+% start of it under the figure/table). captions longer than a page still break across pages.
+%
+% the fit check typesets an approximation of the caption into a box that is then discarded, so its
+% \label/\index/etc are disabled there (and links/anchors in a discarded box are never output).
+% if it doesn't fit w/ the usual space between figure/table and caption (caption skip=20pt, set above),
+% that space is shrunk (down to \my@capminskip) before giving up and moving the caption to the next page.
+% \my@capslack is extra room required beyond the measured height, to allow for measurement error.
+% NOTE: not done for the longtable version below, where the caption is the first row of the table.
+\newsavebox\my@capbox
+\newlength\my@capslack
+\setlength\my@capslack{4pt}
+\newlength\my@capminskip
+\setlength\my@capminskip{6pt}
+\newlength\my@capneeds
+\newlength\my@caphas
+\newcommand\my@measurecaption[3]{%
+  \begingroup
+    \let\label\@gobble
+    \my@br@disable
+    \let\index\@gobble
+    \let\nomenclature\@gobbletwo
+    \let\footnotemark\relax
+    \setbox\my@capbox=\vbox{%
+      \hsize=\linewidth \linewidth=\hsize
+      \normalfont\normalsize \parindent=\z@
+      \textbf{\@nameuse{my@origfnum@#1}: }\textbf{#2.} #3\par}%
+    \global\setbox\my@capbox=\box\my@capbox
+  \endgroup}
+\newcommand\my@captionof[3]{%
+  \par
+  % a (zero-cost) break point, so the page builder decides whether the figure/table itself still fits
+  % on this page *before* we measure the space left (\pagetotal otherwise counts it even if it won't).
+  \penalty\z@
+  \my@measurecaption{#1}{#2}{#3}%
+  \setlength\my@capneeds{\dimexpr\ht\my@capbox+\dp\my@capbox+\my@capslack\relax}%
+  \global\setbox\my@capbox=\box\voidb@x
+  \ifdim\pagegoal<\maxdimen
+    \setlength\my@caphas{\dimexpr\pagegoal-\pagetotal\relax}%
+    % search log for "mycaptionof fit" to see these numbers for each caption
+    \typeout{mycaptionof fit (#1 #2): needs \the\my@capneeds\space+ skip, has \the\my@caphas}%
+    \ifdim\dimexpr\my@capneeds+\abovecaptionskip\relax>\my@caphas
+      \ifdim\dimexpr\my@capneeds+\my@capminskip\relax>\my@caphas
+        \newpage
+      \else
+        % use all the space that is left as the skip (between \my@capminskip and the usual skip)
+        \captionsetup{skip=\the\dimexpr\my@caphas-\my@capneeds\relax}%
+      \fi
+    \fi
+  \fi
+  \captionof{#1}[#2]{\textbf{#2.} #3}}
+\newcommand\my@captionofbackref[4]{%
+  \my@setnextbackref{#1}{#4}%
+  \my@captionof{#1}{#2}{#3}%
+  \label{#4}}
+% longtable versions. longtable has already stepped its counter by the time we are in its rows.
+% these are called inside a \noalign group (see \mycaptionof below), which they must close before \caption.
+%
+% \my@LTanchor adds the anchor that refs to the longtable (e.g. the \Crefwithbackref link to it) point to.
+% hyperref normally adds this at the start of each longtable, but only if longtable was loaded before
+% hyperref, and caltech_thesis.cls loads hyperref first. without it, the \label still points to
+% table.<n> (from longtable's \refstepcounter), but that destination doesn't exist, so links to the
+% table went to page 1 instead (pdfTeX warning "name{table.S2.3} has been referenced but does not exist").
+% inside landscape (where \columnwidth > \textwidth, as lscape only changes the former), the destination
+% fits the whole page, since pdfTeX doesn't apply lscape's rotation to the usual XYZ destination
+% coordinates (they ended up off the page).
+\newcommand\my@LTanchor{%
+  \ifdefined\Hy@LT@currentHref\else
+    \begingroup
+      \ifdim\columnwidth>\textwidth \def\@pdfview{Fit}\fi
+      \hyper@anchorstart{\@currentHref}\hyper@anchorend
+    \endgroup
+  \fi}
+\newcommand\my@LTcaptionof[3]{%
+  \my@LTanchor
+  \egroup
+  \caption[#2]{\textbf{#2.} #3}}
+\newcommand\my@LTcaptionofbackref[4]{%
+  \my@setbackref{#1}{\csname the#1\endcsname}{#4}%
+  \my@LTanchor
+  \egroup
+  \caption[#2]{\textbf{#2.} #3\label{#4}}}
+
+% usage: \mycaptionof{<figure|table>}{<title>}{<long description>}\label{<label>}
+%
+% if (and only if) the \label immediately follows (whitespace / single newlines ok, but no blank line),
+% the "Figure/Table <n>" part of the caption links back to the \crefwithbackref{<label>} (/etc) reference.
+% the \label stays outside of the arguments, so overleaf autocomplete of labels should still work.
+%
+% also works as the caption row of a longtable, e.g.:
+%   \mycaptionof{table}{<title>}{<description>}\label{<label>} \\ \endfirsthead
+% (in longtable, caption commands must start with \noalign, and protected commands like ones from
+% \NewDocumentCommand can't come first in a row. hence the \newcommand wrapper / \noalign\bgroup here.
+% this was why \captionbacktorefs backlinks were broken for longtables, along w/ \@captype being undefined
+% in longtable.)
+\newcommand\mycaptionof{%
+  \ifx\caption\LT@caption
+    \expandafter\my@LTmycaptionof
+  \else
+    \expandafter\my@mycaptionof
+  \fi}
+\def\my@LTmycaptionof{\noalign\bgroup\my@LTmycaptionof@}
+\ExplSyntaxOn
+\NewDocumentCommand{\my@mycaptionof}{m m +m}
+  {
+    \peek_meaning_remove_ignore_spaces:NTF \label
+      { \use:c {my@captionofbackref} {#1} {#2} {#3} }
+      { \use:c {my@captionof} {#1} {#2} {#3} }
+  }
+\NewDocumentCommand{\my@LTmycaptionof@}{m m +m}
+  {
+    \peek_meaning_remove_ignore_spaces:NTF \label
+      { \use:c {my@LTcaptionofbackref} {#1} {#2} {#3} }
+      { \use:c {my@LTcaptionof} {#1} {#2} {#3} }
+  }
+\ExplSyntaxOff
+\makeatother
 
 % colors link [targets?] (including links each figure has to first reference), so they are red if not referenced
 % can be useful for debugging which figures you have not yet mentioned (or propertly referenced) in text.
@@ -687,7 +861,8 @@
   \newcounter{susis}
   % had trouble getting it to work w/ renewcommand to redef hyperlink, but this is working as long as i use the *d versions in backref code below
   \newcommand{\hyperlinkd}[2]{%
-  \refstepcounter{susis}\label{susislink#1}%
+  % (grouped, so \@currentlabel is unchanged for any \label that follows)
+  {\refstepcounter{susis}\label{susislink#1}}%
   \ifcsname r@susistarget#1\endcsname
   \hyperlink{#1}{\textcolor{blue}{#2}}%
   \else
@@ -700,7 +875,7 @@
   \fi
   }
   \newcommand{\hypertargetd}[2]{%
-  \refstepcounter{susis}\label{susistarget#1}%
+  {\refstepcounter{susis}\label{susistarget#1}}%
   \ifcsname r@susislink#1\endcsname
   % TODO delete this teal? change?
   %\hypertarget{#1}{\textcolor{teal}{#2}}%
@@ -740,14 +915,12 @@
 % TODO TODO restore?
 %\NewDocumentCommand\captionbacktorefs{O{#2}mm}{%
 % TODO TODO work?
+%
+% NOTE: prefer \mycaptionof (defined above), which provides the same backlink, and also works in
+% longtables. this one only works inside floats (needs \@captype, which longtable does not define).
 \NewDocumentCommand\captionbacktorefs{O{#2}+mm}{%
-  % TODO what are these first two lines doing?
-  \expandafter\let\expandafter\orig@fnum\csname fnum@\@captype\endcsname
-  \@namedef{fnum@\@captype}{%
-  % TODO TODO is there something i can use other than #3 here (something about the figure?)
-  % if i want to define the label before this call
-    \hyperlinkd{numback:#3}{\orig@fnum}%
-  }%
+  % registers #3 as the backlink target for the next \@captype caption (see \my@wrapfnum)
+  \my@setnextbackref{\@captype}{#3}%
   % seems to not need this actually? and as long as i don't use name refs, this is fine.
   % any reason to use this anyway? TODO can i fall back to no link if nameref not defined?
   %%\caption[{#1}]{\hyperlinkd{nameback:#3}{#2}}\label{#3}%
@@ -783,18 +956,169 @@
 \newcommand*\namerefwithbackref[1]{%
   \hypertargetd{nameback:#1}{\nameref{#1}}%
 }
+
+% Automatic backlinks
 %
+% \cref and \Cref are wrapped so that the first reference to each figure/table caption label (from
+% \mycaptionof or \captionbacktorefs) is the target of that caption's backlink, unless there is an explicit
+% \refwithbackref / \crefwithbackref / \Crefwithbackref{<label>}, which is then used instead (wherever it
+% is in the document). a warning is emitted if there is more than one explicit one for the same label.
+% \cref* / \Cref* (no link) are never targets. comma separated lists of labels work.
+%
+% "first" is the first one that is actually output (in page order, so after endfloat moves figures), not the
+% first one expanded. some things (caption package, tabularx, \my@measurecaption) typeset their contents
+% more than once and discard all but one copy. to handle this, each reference of a label gets a number
+% (counting all expansions), which is written to .aux only when its page is shipped out. the next run then
+% places the target at the reference w/ the lowest shipped number. on a run w/o that information (e.g. the
+% first one, or after a label is first referenced), the target goes on the first expanded reference.
+% so, as for other refs, it can take a couple extra runs to settle (latexmk reruns as needed).
+%
+% contents of the table of contents / list of figures / list of tables are not counted (see \@starttoc
+% below), nor is the measurement copy of captions. not handled: refs in running headers.
+\makeatletter
+\ExplSyntaxOn
+% label -> number of \cref/\Cref expansions of it so far (this run)
+\prop_new:N \g__my_br_seq_prop
+% label -> lowest number of those that was shipped out (previous run)
+\prop_new:N \g__my_br_first_prop
+% label -> input line(s) of explicit targets (previous run; or this run, w/ empty value, if new)
+\prop_new:N \g__my_br_explicit_prop
+% labels of captions w/ backlinks (previous run)
+\prop_new:N \g__my_br_caption_prop
+\bool_new:N \l__my_br_disable_bool
+\tl_new:N \l__my_br_ref_tl
+\tl_new:N \l__my_br_n_tl
+\tl_new:N \l__my_br_tmp_tl
+
+\msg_new:nnn { thesis } { duplicate-backref }
+  {
+    More~than~one~explicit~backlink~target~for~label~'#1'~
+    (\iow_char:N\\refwithbackref,~\iow_char:N\\crefwithbackref,~or~\iow_char:N\\Crefwithbackref,~
+    on~input~lines~#2).~Only~the~first~one~(in~page~order)~is~used.~
+    Change~the~others~to~\iow_char:N\\ref,~\iow_char:N\\cref,~or~\iow_char:N\\Cref.
+  }
+
+% commands written to .aux (read at \begin{document})
+\cs_new_protected:cpn { my@br@caption } #1
+  { \prop_gput:Nnn \g__my_br_caption_prop {#1} { } }
+% #1: label, #2: number of a shipped (automatic) reference
+\cs_new_protected:cpn { my@br@shipped } #1#2
+  {
+    \cs_gset:cpn { my@br@hastarget@#1 } { }
+    \prop_get:NnNTF \g__my_br_first_prop {#1} \l__my_br_tmp_tl
+      {
+        \int_compare:nNnT {#2} < { \l__my_br_tmp_tl }
+          { \prop_gput:Nnn \g__my_br_first_prop {#1} {#2} }
+      }
+      { \prop_gput:Nnn \g__my_br_first_prop {#1} {#2} }
+  }
+% #1: label, #2: input line of a shipped explicit target
+\cs_new_protected:cpn { my@br@explicit } #1#2
+  {
+    \cs_gset:cpn { my@br@hastarget@#1 } { }
+    \prop_get:NnNTF \g__my_br_explicit_prop {#1} \l__my_br_tmp_tl
+      { \prop_gput:Nne \g__my_br_explicit_prop {#1} { \l__my_br_tmp_tl ,~#2 } }
+      { \prop_gput:Nnn \g__my_br_explicit_prop {#1} {#2} }
+  }
+\cs_new_protected:Npn \__my_br_after_aux:
+  {
+    \prop_map_inline:Nn \g__my_br_explicit_prop
+      {
+        \tl_if_in:nnT {##2} { , }
+          { \msg_warning:nnnn { thesis } { duplicate-backref } {##1} {##2} }
+      }
+    % .aux is read again at \end{document}, which should not change anything
+    \cs_gset_protected:cpn { my@br@caption } ##1 { }
+    \cs_gset_protected:cpn { my@br@shipped } ##1##2 { }
+    \cs_gset_protected:cpn { my@br@explicit } ##1##2 { }
+  }
+% (\AtBeginDocument code runs after .aux is read)
+\AtBeginDocument { \__my_br_after_aux: }
+
+\cs_new_protected:cpn { my@br@disable } { \bool_set_true:N \l__my_br_disable_bool }
+
+% #1: label (for an explicit target)
+\cs_new_protected:cpn { my@br@explicitcall } #1
+  {
+    \prop_if_in:NnF \g__my_br_explicit_prop {#1}
+      { \prop_gput:Nnn \g__my_br_explicit_prop {#1} { } }
+    \bool_if:NF \l__my_br_disable_bool
+      {
+        \iow_shipout:Ne \@auxout
+          {
+            \token_to_str:N \my@br@explicit
+            { \tl_to_str:n {#1} } { \int_use:N \inputlineno }
+          }
+      }
+  }
+
+% #1: original ref command, #2: label(s)
+\cs_new_protected:Npn \__my_br_ref:Nn #1#2
+  {
+    \tl_set:Nn \l__my_br_ref_tl { #1 {#2} }
+    \bool_if:NF \l__my_br_disable_bool
+      { \clist_map_function:nN {#2} \__my_br_one:n }
+    \tl_use:N \l__my_br_ref_tl
+  }
+\cs_new_protected:Npn \__my_br_one:n #1
+  {
+    \prop_if_in:NnT \g__my_br_caption_prop {#1}
+      {
+        \prop_get:NnNTF \g__my_br_seq_prop {#1} \l__my_br_n_tl
+          { \tl_set:Ne \l__my_br_n_tl { \int_eval:n { \l__my_br_n_tl + 1 } } }
+          { \tl_set:Nn \l__my_br_n_tl { 1 } }
+        \prop_gput:NnV \g__my_br_seq_prop {#1} \l__my_br_n_tl
+        \prop_if_in:NnF \g__my_br_explicit_prop {#1}
+          {
+            \prop_get:NnNF \g__my_br_first_prop {#1} \l__my_br_tmp_tl
+              { \tl_set:Nn \l__my_br_tmp_tl { 1 } }
+            \int_compare:nNnT { \l__my_br_tmp_tl } = { \l__my_br_n_tl }
+              {
+                \tl_set:Ne \l__my_br_ref_tl
+                  { \exp_not:N \hypertargetd { numback:#1 } { \exp_not:V \l__my_br_ref_tl } }
+              }
+            \iow_shipout:Ne \@auxout
+              {
+                \token_to_str:N \my@br@shipped
+                { \tl_to_str:n {#1} } { \l__my_br_n_tl }
+              }
+          }
+      }
+  }
+
+\cs_new_protected:Npn \__my_br_wrap_refs:
+  {
+    \NewCommandCopy \my@origcref \cref
+    \NewCommandCopy \my@origCref \Cref
+    \RenewDocumentCommand \cref { s m }
+      { \IfBooleanTF {##1} { \my@origcref * {##2} } { \__my_br_ref:Nn \my@origcref {##2} } }
+    \RenewDocumentCommand \Cref { s m }
+      { \IfBooleanTF {##1} { \my@origCref * {##2} } { \__my_br_ref:Nn \my@origCref {##2} } }
+    % don't count refs in toc / lof / lot entries
+    \NewCommandCopy \my@origstarttoc \@starttoc
+    \cs_set_protected:Npn \@starttoc ##1
+      { \group_begin: \my@br@disable \my@origstarttoc {##1} \group_end: }
+  }
+% (at \begin{document}, after cleveref has finished defining \cref / \Cref)
+\AtBeginDocument { \__my_br_wrap_refs: }
+\ExplSyntaxOff
+
+% explicit backlink targets (see "Automatic backlinks" above)
 \newcommand*\refwithbackref[1]{%
+  \my@br@explicitcall{#1}%
   \hypertargetd{numback:#1}{\ref{#1}}%
 }
 
 % using cleveref
 \newcommand*\crefwithbackref[1]{%
-  \hypertargetd{numback:#1}{\cref{#1}}%
+  \my@br@explicitcall{#1}%
+  \hypertargetd{numback:#1}{\my@origcref{#1}}%
 }
 \newcommand*\Crefwithbackref[1]{%
-  \hypertargetd{numback:#1}{\Cref{#1}}%
+  \my@br@explicitcall{#1}%
+  \hypertargetd{numback:#1}{\my@origCref{#1}}%
 }
+\makeatother
 
 % TODO delete?
 % https://tex.stackexchange.com/questions/283730/left-align-toc-items-when-using-tableofcontents
@@ -839,6 +1163,11 @@
 % {
 % otherwise i'd have to add a bunch of \multicolumn{1}{c}{} values to get those empty entries to be ignored for link column types (like CID, which is missing for pfo and mixes in mix_odors table)
 \WarningFilter{hyperref}{Suppressing empty link}
+
+% \captionof (as used by \mycaptionof, outside of floats) can't use hypcap, so links to these
+% figures/tables point to the caption instead of the top of the figure. silencing rather than
+% setting hypcap=false, so hypcap still works for any captions inside floats.
+\WarningFilter{caption}{The option `hypcap=true' will be ignored}
 
 \newcommand{\um}{\ensuremath{\mu m}}
 
@@ -1152,6 +1481,12 @@ This mixture suppression does not seem to be inherited from the ORNs, where glom
     \renewcommand{\thefigure}{S\oldthefigure}% Prefix figure number with S
     \let\oldthetable\thetable% Capture table numbering scheme
     \renewcommand{\thetable}{S\oldthetable}% Prefix table number with S
+    % same for hyperref's internal anchor names, which otherwise collide w/ those of the main chapter
+    % figures/tables (e.g. S2.1 and 2.1 would both be figure.2.1), breaking links to one of them
+    \let\oldtheHfigure\theHfigure%
+    \renewcommand{\theHfigure}{S\oldtheHfigure}%
+    \let\oldtheHtable\theHtable%
+    \renewcommand{\theHtable}{S\oldtheHtable}%
     % TODO "Supplementary"?
     \section{Supplement}% Set supplementary section
     \let\oldchapter\chapter% Copy \chapter into \oldchapter
@@ -1159,6 +1494,8 @@ This mixture suppression does not seem to be inherited from the ORNs, where glom
     \renewcommand{\chapter}{% Update \chapter
         \let\thefigure\oldthefigure% Copy \thefigure into \oldthefigure
         \let\thetable\oldthetable% Copy \thetable into \oldthetable
+        \let\theHfigure\oldtheHfigure%
+        \let\theHtable\oldtheHtable%
         \let\chapter\oldchapter% Restore original \chapter
         \oldchapter% Call original \chapter
         % TODO keep here? or just call at end of \supplementsection, after all figs?
@@ -1289,7 +1626,7 @@ In chapters \ref{chap:remypaper} and \ref{chap:natmix}, we apply these technique
 
 \section{Overview}
 In \textit{Drosophila}, ORNs are organized into hair-like structures called sensilla, which are distributed with rough stereotypy across the surface of the two olfactory organs: the antennae and the maxillary palps\cite{SensillaMaps}.
-There are typically 2-4 neurons of different types housed together in a sensillum, and extracellular spike recordings within sensilla can distinguish the different neurons based on their spike amplitude\cite{Bhandawat2007}.
+There are typically \numrange{2}{4} neurons of different types housed together in a sensillum, and extracellular spike recordings within sensilla can distinguish the different neurons based on their spike amplitude\cite{Bhandawat2007}.
 Which ORNs are housed together in a sensillum can be important, as there is some evidence that ORNs housed in the same sensilla can inhibit each other in predictable ways via ephaptic effects\cite{EphapticSensillaInh}.
 ORNs housed in the same sensilla may tend to signal odors of opposing valence, providing some logic to the intrasensillar inhibition\cite{Wu2022}.
 
@@ -1435,7 +1772,7 @@ We investigated how odor coding in the fly olfactory circuit balances these comp
 A subset (open gray symbols) spanning the odor space was selected for measurement in the MB.
 (continued on next page)
 % TODO happy with this?
-\textbf{B)} Imaging volumes comprising \textasciitilde11 planes through the KC soma layer capture the activity of >85\% of KCs in an MB (top), or 9--10 planes covering all \textasciitilde50 glomeruli in the AL (middle).
+\textbf{B)} Imaging volumes comprising \textasciitilde11 planes through the KC soma layer capture the activity of >85\% of KCs in an MB (top), or \numrange{9}{10} planes covering all \textasciitilde50 glomeruli in the AL (middle).
 %}{fig:1}
 }
 \label{fig:1}
@@ -1459,7 +1796,7 @@ A subset (open gray symbols) spanning the odor space was selected for measuremen
 %
 %\textbf{E)} Left: baseline fluorescence (left), weighted ROI masks of KCs (middle), and ROI labels corresponding to individual KCs (right) from a single imaging plane in an MB.
 %Right: odor-evoked patterns of KC activity in response to 1-pentanol, 1-hexanol, and ethyl propionate.
-%Scale bar, 10\um.
+%Scale bar, \qty{10}{\micro\metre}.
 %
 %\textbf{F)} Example odor-evoked calcium signals in an imaging block from a single KC.
 %
@@ -1492,7 +1829,7 @@ A subset (open gray symbols) spanning the odor space was selected for measuremen
 A subset (open gray symbols) spanning the odor space was selected for measurement in the MB.
 
 % TODO happy with this?
-\textbf{B)} Imaging volumes comprising \textasciitilde11 planes through the KC soma layer capture the activity of >85\% of KCs in an MB (top), or 9--10 planes covering all \textasciitilde50 glomeruli in the AL (middle).
+\textbf{B)} Imaging volumes comprising \textasciitilde11 planes through the KC soma layer capture the activity of >85\% of KCs in an MB (top), or \numrange{9}{10} planes covering all \textasciitilde50 glomeruli in the AL (middle).
 
 % TODO TODO say genotype? how/where?
 % TODO TODO was it from one fly?
@@ -1508,7 +1845,7 @@ See \Crefwithbackref{fig:s3} for means, SDs, and per-glomerulus sample sizes for
 
 \textbf{E)} Left: baseline fluorescence (left), weighted ROI masks of KCs (middle), and ROI labels corresponding to individual KCs (right) from a single imaging plane in an MB.
 Right: odor-evoked patterns of KC activity in response to 1-pentanol, 1-hexanol, and ethyl propionate.
-Scale bar, 10\um.
+Scale bar, \qty{10}{\micro\metre}.
 
 \textbf{F)} Example odor-evoked calcium signals in an imaging block from a single KC.
 
@@ -1542,13 +1879,13 @@ Between 9 and 17 odors were measured together in the same MB.
 
 % TODO TODO should all (any?) genotypes be italic? (this OK107-Gal4 reference is in word doc)
 We used in vivo volumetric two-photon microscopy to image odor-evoked calcium signals in the MB of flies expressing nuclear-localized GCaMP6s selectively in KCs (directed by the \textit{OK107-Gal4} driver\cite{OK107}) (\cref{fig:1}B).
-In pilot experiments using cytoplasmic GCaMP6f as the calcium reporter, the small size (\textasciitilde2--3\um) and tight packing of KC somata (\cref{fig:1}E) presented challenges for reliable cellular segmentation and pixel assignment to individual KCs over the course of an imaging session, with poor trial-to-trial reliability in odor panels larger than 8 odors. 
+In pilot experiments using cytoplasmic GCaMP6f as the calcium reporter, the small size (\textasciitilde\qtyrange{2}{3}{\micro\metre}) and tight packing of KC somata (\cref{fig:1}E) presented challenges for reliable cellular segmentation and pixel assignment to individual KCs over the course of an imaging session, with poor trial-to-trial reliability in odor panels larger than 8 odors. 
 To expand the size of odor panels that could be evaluated in a single brain, we measured KC activation using nuclear calcium, which has slower response dynamics, but strongly correlated response amplitudes, compared to cytoplasmic calcium\cite{NuclearVsCytoplasmicCalcium1,NuclearVsCytoplasmicCalcium2}.
 Localization of the calcium indicator to nuclei resulted in a several pixel gap between KCs that facilitated reliable cellular segmentation (\cref{fig:1}E).
 
 Flies were presented odors while imaging with fast-scanning through the KC cell body layer, and odor-evoked KC signals were extracted from volumetric movies using the Suite2p pipeline\cite{Suite2p}.
 In brief, after registration across frames of each functional movie in each plane to correct for motion, regions of interest (ROIs) representing each KC were extracted (\cref{fig:1}E).
-Although cell detection in Suite2p is usually neural activity-based, we used settings that extracted \textasciitilde90\% (\textasciitilde\num{1800}--\num{2000} cells) of the expected number of KCs in each MB using maps of the mean correlation of pixel fluorescence with its nearby pixels and anatomical priors of the expected size and shape of cell ROIs.
+Although cell detection in Suite2p is usually neural activity-based, we used settings that extracted \textasciitilde90\% (\textasciitilde\numrange{1800}{2000} cells) of the expected number of KCs in each MB using maps of the mean correlation of pixel fluorescence with its nearby pixels and anatomical priors of the expected size and shape of cell ROIs.
 Since KC odor responses are sparse and many KCs do not respond to any odor in even a relatively large panel, this adjustment was important to allow good estimates of KC response rates.
 For a subset of experiments, odor responses were registered to KCs across different functional movies collected from the same MB by alignment of ROIs to 3D anatomical models of KC somata constructed from high-resolution structural images through the MB.
 
@@ -1563,7 +1900,7 @@ When we computed the correlation distance between the KC response vector for eve
 These results demonstrate the reliability of KC odor responses across multiple presentations spanning the time course of an experiment.
 As expected, the pairwise correlation distance between odors reflected the qualitative similarity of their respective KC response patterns (\cref{fig:1}E,I), with visually similar activity patterns corresponding to short odor distances.
 
-The percentage of KCs responding to each odor was similar in each MB, ranging from \textasciitilde5--13\% depending on the odor (\cref{fig:1}H).
+The percentage of KCs responding to each odor was similar in each MB, ranging from \textasciitilde\qtyrange{5}{13}{\percent} depending on the odor (\cref{fig:1}H).
 % TODO TODO TODO talk to remy about this (slacked her about it)
 When compared against mean OR activity for each odor, estimated by averaging the firing rates evoked by each odor across all ORs in the Hallem dataset, KC response rate was not significantly correlated with mean ORN response strength (\cref{fig:1}H, Spearman's $\rho{=}0.48$, $p{=}0.05$).
 However, we note that the Hallem dataset underestimates ORN population responses to acids and amines since it does not include odorant receptors from the ionotropic receptor (IR) family\cite{IRs}.
@@ -1589,9 +1926,9 @@ Thus, these models predict that odor relationships encoded in third-order olfact
 
 % Figure 2 - MB representational space is structured and invariant across individuals
 % {
-\begin{figure}[H]
+\begin{longcapfigure}
 \includegraphics[width=\textwidth]{2}
-\captionbacktorefs[MB representational space is structured and invariant across individuals]{}{fig:2}
+\mycaptionof{figure}{MB representational space is structured and invariant across individuals}{%
 \textbf{A)} Correlation distance matrices for four different flies showing pairwise relationships between KC population responses in individual odor trials (upper triangles) or in trial-averaged responses for each odor (lower triangle).\\
 
 \textbf{B)} Correlation distance between trial-averaged KC responses for every odor pair for the four flies in \textbf{(A)}.
@@ -1599,15 +1936,10 @@ Odor pairs are shown in the same order in each row, arranged by their mean corre
 Odors that evoke similar KC response patterns in one fly tend to also elicit similar response patterns in other flies.\\
 
 % TODO TODO is this actually the (sorted) rows of B? (maybe it's a bit redundant if we are just talking about sorting as part of spearmans? but is that correct?)
-\textbf{C)} Spearman's rank correlation between the rows of \textbf{(B)} (i.e., between flies), evaluating the similarity of the rank ordering of odor pairs between flies according to their representational distance in KCs.
+\textbf{C)} Spearman's rank correlation between the rows of \textbf{(B)} (i.e., between flies), evaluating the similarity of the rank ordering of odor pairs between flies according to their representational distance in KCs.\\
 
-(continued on next page)
 % TODO TODO still need this now that i'm putting all in captions? will captions be broken appropriately? (or can i easily get them to be?)
 %\iffalse
-\end{figure}
-\begin{figure}[H]
-\ContinuedFloat
-\caption[]{(continued)}
 \textbf{D)}
 Left: same as \textbf{(C)}, but for shuffled data where odor responses were randomized by permuting the columns of the cell x odor response matrix for each fly.
 The matrix shows the mean Spearman's correlation across \num{10000} shuffles.
@@ -1621,7 +1953,9 @@ Each response cluster contained KCs from every fly.\\
 % TODO TODO do similar clustering (/my own response class sorting) of model KCs responding to megamat, to compare model vs KC cells? (+ my own response class sorting of remy's KC megamat responses)
 \textbf{F)} Mean odor response profiles across KCs in each response cluster for each fly.
 KCs with conserved odor tuning profiles were found in every MB.
-\end{figure}
+}
+\label{fig:2}
+\end{longcapfigure}
 %\fi
 % }
 
@@ -1645,16 +1979,11 @@ These results demonstrate that the structure of the representational space of od
 
 % Figure 3 - Odor relationships in MB representational space deviate from predicted relationships in a random feedforward network
 % {
-\begin{figure}[H]
+\begin{longcapfigure}
 \includegraphics[width=\textwidth]{3}
 % TODO has this (or any other) working caption label changed?
-\captionbacktorefs{Odor relationships in MB representational space deviate from predicted relationships in a random feedforward network}{fig:3}
+\mycaptionof{figure}{Odor relationships in MB representational space deviate from predicted relationships in a random feedforward network}{%
 \textbf{A)} Schematic of the fly olfactory network.
-(continued on next page)
-\end{figure}
-\begin{figure}[H]
-\ContinuedFloat
-\caption[]{(continued)}
 \textbf{B)} Comparison of odor-pair correlation distances ($1 -\text{Pearson's } r$) in the uniform KC model with those in observed ORN coding space (black symbols; $n{=}136$ pairs from 17 odors).
 % TODO TODO also update working text to not say mean is over a different # of MBs than the errorbars
 Each circular marker is the mean across 20 simulated mushroom bodies (MBs); each MB had an independently generated PN–KC connectivity matrix in which every glomerulus was drawn with equal probability.
@@ -1662,7 +1991,7 @@ Each circular marker is the mean across 20 simulated mushroom bodies (MBs); each
 %Error bars span the $25^{th}{-}75^{th}$ percentiles across those 100 models. 
 Error bars within each marker are 95\% CI across these 20 simulated MBs.
 Red dashed line shows unity.
-The uniform model systematically decorrelated odor pairs, most strongly for odor pairs that are similar in ORN space, while closely preserving the rank ordering of ORN odor–odor distances (Spearman's $\rho{=}0.98$, $p{=}\num{8.8e-98}$, 90\% CI 0.97--0.99).
+The uniform model systematically decorrelated odor pairs, most strongly for odor pairs that are similar in ORN space, while closely preserving the rank ordering of ORN odor–odor distances (Spearman's $\rho{=}0.98$, $p{=}\num{8.8e-98}$, 90\% CI \numrange{0.97}{0.99}).
 
 % TODO is S2A actually correct in remy/betty's current supplemental fig numbering? (doesn't seem so) (delete S2A stuff unless remy produces a figure / table  that has this. i made my own S7 for this)
 % TODO and is my s7 making same point as intended with this reference (showing N per pair)?
@@ -1692,14 +2021,16 @@ Model KCs that responded to none of the odors were excluded from correlation cal
 Each point represents one odor pair ($n{=}136$); observed KC distances are averaged across flies ($n{=}4{-}18$); uniform model KC distances are averaged across 100 instantiations of the model.
 The line shows the linear fit between modeled and observed distances, with 95\% CI of the fit shaded.
 Spearman's $\rho$ between modeled and observed distances:
-uniform model, $\rho{=}0.64$ (90\% CI 0.55--0.71; $p{=}\num{7.1e-17}$);
-hemibrain model, $\rho{=}0.71$ (90\% CI 0.62--0.77; $p{=}\num{8.0e-22}$).
+uniform model, $\rho{=}0.64$ (90\% CI \numrange{0.55}{0.71}; $p{=}\num{7.1e-17}$);
+hemibrain model, $\rho{=}0.71$ (90\% CI \numrange{0.62}{0.77}; $p{=}\num{8.0e-22}$).
 % TODO TODO is this CI (on the rho) actually from bootstrapping across odors pairs? check code
 CIs were computed from a bootstrap over odor pairs.
 
 \textbf{F)} Observed fraction of KCs (mean and 95\% CI) responding to the indicated number of odors for a panel containing 17 odors.
 The distributions of the fraction of modeled KCs responding to different numbers of odors in the uniform and hemibrain models (as in \textbf{(Dii}) are plotted for comparison.
-\end{figure}
+}
+\label{fig:3}
+\end{longcapfigure}
 % }
 
 To compare the observed structure of MB representational space to what is predicted by a feedforward random network, we modeled KC population responses by adapting a previously described spiking model of the fly olfactory circuit\cite{Kennedy2019} (\cref{fig:3}A).
@@ -1709,7 +2040,7 @@ These ORN firing rates were propagated through the existing AL section of the mo
 % TODO TODO TODO discuss how ann did both spike-rate and poisson PN inputs, but we just use the spike-rate as she did for many things?
 % maybe just in methods?
 % TODO TODO just say 7 here, as we don't introduce hemibrain till later?
-KCs were modeled as leaky integrate-and-fire units with a small number of input sites, typically \textasciitilde5--7 dendritic claws, that each receive input from a single PN bouton.
+KCs were modeled as leaky integrate-and-fire units with a small number of input sites, typically \textasciitilde\numrange{5}{7} dendritic claws, that each receive input from a single PN bouton.
 Under assumptions of random feedforward connectivity, the matrix of PN-KC connections in each model instantiation was created by assigning each KC claw a single glomerular input, with all glomeruli having an equal likelihood of being drawn (`uniform' model).
 KC activity was normalized by global feedback inhibition from the non-spiking GABAergic APL.
 % TODO TODO change below for accuracy?
@@ -1749,18 +2080,13 @@ To assess the possible impact of structured olfactory input on MB odor represent
 
 % Figure 4 - Reorganization of odor representations in the fly MB reflects odor relationships in natural sources
 % {
-\begin{figure}[H]
+\begin{longcapfigure}
 % don't really need \centering since using full textwidth, and don't want it for captions anyway (esp to be consistent w/ continuation on next page)
 \includegraphics[width=\textwidth]{4}
-\captionbacktorefs{Reorganization of odor representations in the fly MB reflects odor relationships in natural sources}{fig:4}
+\mycaptionof{figure}{Reorganization of odor representations in the fly MB reflects odor relationships in natural sources}{%
 \textbf{A)} Distribution of odors (monomolecular compounds) in a literature-based database of the volatile headspace composition of many natural food odor sources.
 The pie chart shows the distribution of odor sources in each food category.\\
 
-(continued on next page)
-\end{figure}
-\begin{figure}[H]
-\ContinuedFloat
-\caption[]{(continued)}
 \textbf{B)} Schematic summary of datasets for comparing the properties of odors (top) with their different neural representations (bottom).
 % TODO did we define ECFP earlier? should we?
 Top left, each odor is represented as a binary ECFP fingerprint; structural dissimilarity between odor compounds is computed as the Jaccard distance between fingerprint vectors.
@@ -1784,7 +2110,9 @@ Positive values indicate that a KC space is more closely aligned to the referenc
 Colors indicate hyperbolic distance between odors in the embedded natural source space.
 Dashed line shows OLS fit; marginal histograms show distribution of dissimilarities along each axis.
 Odor pairs that are close in embedded natural source space tend to fall below the fit: they are more similar in KC coding space than their ORN distances would predict.
-\end{figure}
+}
+\label{fig:4}
+\end{longcapfigure}
 % }
 
 Comparisons of odor coding in the ORN input layer and in the MB showed that, although the representations of most pairs of odors were substantially decorrelated, as expected, some odor pairs were comparatively less decorrelated between the ORN and MB layers.
@@ -1841,9 +2169,9 @@ The exception was a small increase in correlation with natural sources under Pea
 
 % Figure 5
 % {
-\begin{figure}[H]
+\begin{longcapfigure}
 \includegraphics[width=\textwidth]{5}
-\captionbacktorefs{Odor relationships in KC soma track metabolic and natural source relationships more closely than those in ORN terminals}{fig:5}
+\mycaptionof{figure}{Odor relationships in KC soma track metabolic and natural source relationships more closely than those in ORN terminals}{%
 % TODO reword "All panels", since A doesn't?
 All panels show a second 17-odor panel chosen to span a range of known metabolic distances in the MetaCyc database.
 All distance matrices show the 17 odors in the same order.\\
@@ -1854,13 +2182,8 @@ All distance matrices show the 17 odors in the same order.\\
 Panel compound names are shown in color, non-panel compounds names are shown in black.
 Pathways are linked when a product of one is a reactant of the other.
 Pathway boundaries are indicated by boxes and correspond to the pathways shown in \textbf{(Bi)}.
-Superpathways, which group pathways with common metabolites or which carry out a common biological function, are not shown here but are included as pathway nodes when the network is constructed.
+Superpathways, which group pathways with common metabolites or which carry out a common biological function, are not shown here but are included as pathway nodes when the network is constructed.\\
 
-(continued on next page)
-\end{figure}
-\begin{figure}[H]
-\ContinuedFloat
-\caption[]{(continued)}
 % TODO should subfig labelling be bold, both in A) and in A reference in-line below (and throughout)
 % (Neuron does not, at least not in Endo2020. they do however have parens around in-line refs)
 % our preprint DOES though, and i think i probably prefer it
@@ -1896,7 +2219,9 @@ $n{=}136$ odor pairs, two-sided $t$-test, corrected by Benjamini-Hochberg.\\
 \textbf{H)} Difference between KC somata and ORN terminals in their Pearson correlation with each reference space $X$ ($r(\text{KC}, X) - r(\text{ORN}, X)$), for chemical (ECFP), metabolic (MetaCyc), and natural source (LOTUS, VCF) distance.
 Positive values indicate a stronger correlation in KCs.
 Distributions come from \num{5000} subsamples of 80\% of the 136 odor pairs, as in \textbf{(G)}.
-\end{figure}
+}
+\label{fig:5}
+\end{longcapfigure}
 % }
 
 We theorized that the underlying reason for the hyperbolic structure of natural source space (as measured in food sources) is that occurrence of the compounds in food sources is determined by the metabolic pathways that produce them.
@@ -1936,22 +2261,17 @@ Interestingly, while the modeled results effectively capture the weakened relati
 
 % Figure 6
 % {
-\begin{figure}[H]
+\begin{longcapfigure}
 \includegraphics[width=\textwidth]{6}
-\captionbacktorefs{Reformatting of odor representations across four stages of olfactory processing}{fig:6}
+\mycaptionof{figure}{Reformatting of odor representations across four stages of olfactory processing}{%
 \textbf{A)} Anatomical schematic of fly olfactory circuit.
 ORN axon terminals are organized in a stereotyped glomerular map in the AL.
 Each uniglomerular PN has dendrites in a single AL glomerulus and projects to the calyx of the MB, where its axonal arbor terminates in multiple boutons that each synapse with KC input claws.\\
 
-(continued on next page)
-\end{figure}
-\begin{figure}[H]
-\ContinuedFloat
-\caption[]{(continued)}
 % TODO TODO TODO update text. it's only mean, not peak, for at least ORN and PN dendrites, right?
 \textbf{B)} Representative baseline fluorescence and peak \DeltaFOverF\, heatmaps of odor-evoked calcium signals in ORN axon terminals, PN dendrites, PN boutons, KC claws, and KC somata to 1-pentanol, 1-hexanol, and ethyl propionate.
 KC data are reproduced from \cref{fig:1}.
-Scale bar, 10\um.\\
+Scale bar, \qty{10}{\micro\metre}.\\
 % TODO TODO just refer to table for all these full genotypes?
 Genotypes:
 ORN axons were imaged in pebbled-Gal4/+; +; 20xUAS-IVS-syn21-opGCaMP6f-p10/+.
@@ -1980,7 +2300,9 @@ Boxes show mean and interquartile range; whiskers, 90\% CI.
 The dashed line indicates no difference from ORN axons.
 Green, chemical (ECFP) reference space; orange, natural source reference space (embedded VCF distances).
 Values right of zero indicate closer correspondence to that reference space than ORN axons; left, weaker.
-\end{figure}
+}
+\label{fig:6}
+\end{longcapfigure}
 % }
 
 To better understand how representations of odor are reformatted from the periphery to the MB, we used functional imaging to measure odor-evoked patterns of activity at each successive stage of processing in the olfactory circuit.
@@ -2013,8 +2335,8 @@ Natural source relationships were not reflected in the ORNs or KC claws ($\rho {
 %Interestingly, the PN bouton representations also reflected natural source relationships, though to a lesser extent ($\rho {=}0.18$, $p{=}\num{7.3e-13}$).
 Interestingly, the PN bouton representations also reflected natural source relationships, though to a lesser extent ($\rho {=}0.18$, $p{=}0.043$).
 % TODO TODO TODO check claude output. r supposed \rho?
-%Bootstrap estimates of the change relative to ORNs were positive for KC somata ($\Delta r = +0.21$, 90\% CI 0.11-0.32; $\Delta \rho {=} +0.16$, 90\% CI 0.04-0.28) and for PN boutons using rank correlations ($\Delta r = +0.16$, 90\% CI 0.08-0.24).
-Bootstrap estimates of the change relative to ORNs were positive for KC somata ($\Delta r = +0.21$, 90\% CI 0.11-0.32; $\Delta \rho {=} +0.16$, 90\% CI 0.04-0.28) and for PN boutons using rank correlations ($\Delta r = +0.16$, 90\% CI 0.08-0.24).
+%Bootstrap estimates of the change relative to ORNs were positive for KC somata ($\Delta r = +0.21$, 90\% CI \numrange{0.11}{0.32}; $\Delta \rho {=} +0.16$, 90\% CI \numrange{0.04}{0.28}) and for PN boutons using rank correlations ($\Delta r = +0.16$, 90\% CI \numrange{0.08}{0.24}).
+Bootstrap estimates of the change relative to ORNs were positive for KC somata ($\Delta r = +0.21$, 90\% CI \numrange{0.11}{0.32}; $\Delta \rho {=} +0.16$, 90\% CI \numrange{0.04}{0.28}) and for PN boutons using rank correlations ($\Delta r = +0.16$, 90\% CI \numrange{0.08}{0.24}).
 KC claws did not shift meaningfully in their natural source correlation from the ORNs. 
 
 % old text, when fig 6 was fig 5
@@ -2096,31 +2418,28 @@ The recoding of odors in the MB to reflect relationships in natural sources woul
 % TODO add text that actually refers to this figure
 % Figure 7
 % {
-\begin{figure}[H]
+\begin{longcapfigure}
 \includegraphics[width=\textwidth]{7}
-\captionbacktorefs{TODO TODO fig 7 DESCRIPTION}{fig:7}
-(captions on next page)
-\end{figure}
-\begin{figure}[H]
-\ContinuedFloat
-\caption[]{(continued)}
+\mycaptionof{figure}{TODO TODO fig 7 DESCRIPTION}{%
 % TODO code formatting for rastermap?
-A) Odor-evoked responses of PN boutons (top) and KC claws (bottom) to odors isoamyl acetate (IaA), pentyl acetate (PA), and ethyl propionate (ep);  Each row is one cluster's trial-averaged response; clusters were generated using `rastermap`, then sorted to group similar IaA response profiles; color, z-scored fluorescence. Marginal bars, number and fraction of boutons/claws per cluster; Marginal line plot, mean z-scored fluorescence across ROIs; blue shading, 3s odor delivery.
+A) Odor-evoked responses of PN boutons (top) and KC claws (bottom) to odors isoamyl acetate (IaA), pentyl acetate (PA), and ethyl propionate (ep);  Each row is one cluster's trial-averaged response; clusters were generated using `rastermap`, then sorted to group similar IaA response profiles; color, z-scored fluorescence. Marginal bars, number and fraction of boutons/claws per cluster; Marginal line plot, mean z-scored fluorescence across ROIs; blue shading, \qty{3}{\second} odor delivery.
 
 B) Individual traces (gray) and cluster mean (red) for representative clusters: PN boutons cluster 7 (top) and 18 (middle), KC claws cluster 26 (bottom).
 Blue shading, odor delivery.
 
-C) Time course of pairwise correlation between odor representations for three odor pairs, in PN boutons (orange) and KC claws (blue). Correlation rises during odor delivery and decays over the following \textasciitilde10s in both boutons and claws.
+C) Time course of pairwise correlation between odor representations for three odor pairs, in PN boutons (orange) and KC claws (blue). Correlation rises during odor delivery and decays over the following \textasciitilde\qty{10}{\second} in both boutons and claws.
 gray shading, odor delivery.
 
-D) Odor–odor correlation distance matrices for 17 odors, computed from KC claw responses in an early [0.5, 0.75)s and a late [1.5, 2.0)s time window, shown above ORN axon and KC somata matrices for reference.
+D) Odor–odor correlation distance matrices for 17 odors, computed from KC claw responses in an early [0.5, 0.75)\,\unit{\second} and a late [1.5, 2.0)\,\unit{\second} time window, shown above ORN axon and KC somata matrices for reference.
 Odors in the same order in every panel.
 
 E) The same four matrices, reordered by hierarchical clustering (average linkage, number of clusters per matrix chosen by silhouette score analysis, shown with optimal leaf ordering. Color strips indicate cluster  cluster assignment).
 5 clusters for the early KC claw response, 7 for late KC claw response, 3 clusters for ORNs, 6 clusters for KC soma.
 
 F) Adjusted Rand index between KC claw odor clusters and those of ORN axons (left) or KC somata (right), in the early and late time windows. Each line is one fly ($n{=}4$). KC claw clustering resembles ORN axons early and KC somata late, with all 4 flies shifting in the same direction in both comparisons.
-\end{figure}
+}
+\label{fig:7}
+\end{longcapfigure}
 % }
 \fi
 % end part to delete (fig 7)
@@ -2130,8 +2449,8 @@ F) Adjusted Rand index between KC claw odor clusters and those of ORN axons (lef
 \section{Methods}
 % TODO rename?
 \subsection{Experimental model}
-\textit{Drosophila melanogaster} were raised on a 12:12 light:dark cycle at \qtyrange{23}{25}{\degreeCelsius} and \qtyrange{60}{70}{\percent} relative humidity on cornmeal/molasses food containing: water (17.8L), agar (136g), cornmeal (\num{1335.4}g), yeast (540g), sucrose (320g), molasses (1.64L), \ce{CaCl2} (12.5g), sodium tartrate (150g), Tegosept (18.45g), 95\% ethanol (153.3mL) and propionic acid (91.5mL).
-All experiments were performed in female flies aged 3--10 days post-eclosion.
+\textit{Drosophila melanogaster} were raised on a 12:12 light:dark cycle at \qtyrange{23}{25}{\degreeCelsius} and \qtyrange{60}{70}{\percent} relative humidity on cornmeal/molasses food containing: water (\qty{17.8}{\litre}), agar (\qty{136}{\gram}), cornmeal (\qty{1335.4}{\gram}), yeast (\qty{540}{\gram}), sucrose (\qty{320}{\gram}), molasses (\qty{1.64}{\litre}), \ce{CaCl2} (\qty{12.5}{\gram}), sodium tartrate (\qty{150}{\gram}), Tegosept (\qty{18.45}{\gram}), 95\% ethanol (\qty{153.3}{\milli\litre}) and propionic acid (\qty{91.5}{\milli\litre}).
+All experiments were performed in female flies aged \numrange{3}{10} days post-eclosion.
 
 Unless otherwise noted, the fly lines in this study were acquired from the Bloomington Drosophila Stock Center (BDSC) and have been previously characterized as discussed below.
 1) pebbled-Gal4 (X), targeting all ORNs (\bdsc{80570})\cite{pebbled};
@@ -2156,11 +2475,11 @@ Full genotypes and sample sizes for each dataset are in Supplemental \Crefwithba
 %\paragraph{ORN \& PN Rearing}
 \paragraph{Rearing of flies for ORN \& PN dendrite imaging}
 % TODO add sentence saying this is for all but the KC flies? remove paragraph heading? (it's also probably not remy's PN axon flies)
-Fly crosses were set up between 8--10 males and 25--30 virgin females in bottles and flipped every 2--3 days to ensure progeny rearing at low density.
+Fly crosses were set up between \numrange{8}{10} males and \numrange{25}{30} virgin females in bottles and flipped every \numrange{2}{3} days to ensure progeny rearing at low density.
 % this has now been merged into ranges describing all flies
 %Bottles were placed in an incubator at 23°C and \textasciitilde60\% humidity on a 12h:12h light:dark cycle.
 Progeny were collected from ZT2 to ZT6, post lights-on, and sorted on a cold-plate to isolate females of the desired genotypes.
-Sorted progeny were then placed into vials at low density (5--8 flies per vial) and returned to incubators under identical conditions of light, temperature, and humidity.
+Sorted progeny were then placed into vials at low density (\numrange{5}{8} flies per vial) and returned to incubators under identical conditions of light, temperature, and humidity.
 Progeny collection from each bottle occurred only during the first three days following initial eclosion.
 Additionally, each cross was utilized to establish only three subsequent bottles before being discarded.
 
@@ -2168,25 +2487,25 @@ Additionally, each cross was utilized to establish only three subsequent bottles
 % TODO TODO TODO update reference, first of all this is showing as 56. in list, and it's not referring to a paper that has these methods. i assume we want to refer to dhruv's paper?
 Odors were delivered essentially as previously described\cite{HongWilson2015}.
 % TODO also mention it was humidified?
-A custom-built multi-channel olfactometer delivered a constant 2 L/min stream of charcoal-filtered air.
+A custom-built multi-channel olfactometer delivered a constant \qty{2}{\litre\per\minute} stream of charcoal-filtered air.
 % TODO consistent ml / mL?
-A 3-way solenoid valve directed 200 mL/min of this flow either through a 20mL glass vial containing 2mL of odor solution (valve open) or an equivalent vial containing 2mL of the solvent.
+A 3-way solenoid valve directed \qty{200}{\milli\litre\per\minute} of this flow either through a \qty{20}{\milli\litre} glass vial containing \qty{2}{\milli\litre} of odor solution (valve open) or an equivalent vial containing \qty{2}{\milli\litre} of the solvent.
 Air flow was controlled using mass flow controllers (MC series, Alicat Scientific, Tucson, AZ).
-The 200 mL/min control or odor streams were carried by tubing of matched lengths and rejoined the carrier stream at the same point along the carrier tube, approximately 10cm from the fly.
-The terminal end of the carrier tube had an inner diameter \textasciitilde8mm and was \textasciitilde1cm away from the fly.
+The \qty{200}{\milli\litre\per\minute} control or odor streams were carried by tubing of matched lengths and rejoined the carrier stream at the same point along the carrier tube, approximately \qty{10}{\centi\metre} from the fly.
+The terminal end of the carrier tube had an inner diameter \textasciitilde\qty{8}{\milli\metre} and was \textasciitilde\qty{1}{\centi\metre} away from the fly.
 Odor concentrations refer to the v/v dilution factor of the odor solution in the vial.
 The concentration of odor in the headspace is further diluted 10-fold in air prior to reaching the fly.
 Unless otherwise indicated, all odors in this study were presented from a $10^{-3}$ (0.1\%) dilution in paraffin oil (J.T. Baker, VWR \#JTS894), with the exception of movies collected from one fly, in which odors were diluted to $10^{-2}$ (1\%).
 
 \subsection{Two-photon calcium imaging}
 Volumetric, in vivo functional calcium imaging was performed essentially as previously described\cite{HongWilson2015,Zocchi2022}.
-After a brief period of cold anesthesia (<20s), the fly was head-fixed, and the cuticle, fat, and air sacs were removed to expose the brain region of interest.
-Two-photon GCaMP6f or GCaMP8m fluorescence was excited with 925nm light from a Mai Tai DeepSee laser (Spectra-Physics, Santa Clara, CA).
-Images were acquired with an Olympus 20X/1.0 numerical aperture objective (XLUMPLFLN20XW) driven by a piezo motor that enabled fast-\textit{z} scanning, and the collection filter was centered at 525nm with a 50nm bandwidth.
+After a brief period of cold anesthesia (<\qty{20}{\second}), the fly was head-fixed, and the cuticle, fat, and air sacs were removed to expose the brain region of interest.
+Two-photon GCaMP6f or GCaMP8m fluorescence was excited with \qty{925}{\nano\metre} light from a Mai Tai DeepSee laser (Spectra-Physics, Santa Clara, CA).
+Images were acquired with an Olympus 20X/1.0 numerical aperture objective (XLUMPLFLN20XW) driven by a piezo motor that enabled fast-\textit{z} scanning, and the collection filter was centered at \qty{525}{\nano\metre} with a \qty{50}{\nano\metre} bandwidth.
 Experiments were conducted at room temperature (\textasciitilde\qty{22}{\degreeCelsius}).
 % TODO want to change any formatting of concentrations / chemical names here?
 % TODO formatting of pH?
-The brain was constantly perfused by gravity flow with saline containing (in mM): 103 NaCl, 3 KCl, 5 N-Tris(hydroxymethyl)methyl-2-aminoethane-sulfonic acid, 8 trehalose, 10 glucose, 26 \ce{NaHCO3}, 1 \ce{NaH2PO4}, 1.5 \ce{CaCl2}, and 4 \ce{MgCl2} (pH 7.3, osmolarity adjusted to 270--275 mOsm).
+The brain was constantly perfused by gravity flow with saline containing (in \unit{\milli\molar}): 103 NaCl, 3 KCl, 5 N-Tris(hydroxymethyl)methyl-2-aminoethane-sulfonic acid, 8 trehalose, 10 glucose, 26 \ce{NaHCO3}, 1 \ce{NaH2PO4}, 1.5 \ce{CaCl2}, and 4 \ce{MgCl2} (pH 7.3, osmolarity adjusted to \qtyrange{270}{275}{\milli\osmole}).
 % TODO command for this ml/min formatting (+ use above, and everywhere else) (delete? do i even like this?)
 The saline was bubbled with 95\% \ce{O2} / 5\% \ce{CO2} and circulated in the bath at \textasciitilde2--3$\text{mL/min}$.
 
@@ -2196,40 +2515,40 @@ the imaging plane; the dorsal cuticle was removed, and the antennal lobes were e
 The antennae were snugly secured below the imaging chamber, keeping them dry and responsive to odors.
 ORN axon terminals and PN dendrites were imaged with a galvo-galvo scanning system (Thorlabs Bergamo).
 % TODO TODO update!!! was it all 9-10 planes spaced 10um apart?
-Flies were imaged from the dorsal side, with 9--10 planes spaced 10\um apart.
+Flies were imaged from the dorsal side, with \numrange{9}{10} planes spaced \qty{10}{\micro\metre} apart.
 The number of planes and the depth of the first imaging plane were chosen with the goal of capturing signal from all glomeruli.
-Images were acquired at a resolution of 192x192 pixels, with typical fields-of-view (FOV) of \textasciitilde90--100$\um^2$ and volumetric sampling rates of \textasciitilde1Hz through the antennal lobe.
+Images were acquired at a resolution of 192x192 pixels, with typical fields-of-view (FOV) of \textasciitilde\qtyrange{90}{100}{\micro\metre\squared} and volumetric sampling rates of \textasciitilde\qty{1}{\hertz} through the antennal lobe.
 For ORN axon and PN dendrite experiments, odors were presented in a pseudorandom order, with the three trials of each odor being presented contiguously.
 %Trials consisted of a 7s baseline recording, the odor pulse (2s for ORN experiments and 3s for PN
-Trials consisted of a 7s baseline recording, a 3s odor pulse, and a 20s post-stimulus period.
+Trials consisted of a \qty{7}{\second} baseline recording, a \qty{3}{\second} odor pulse, and a \qty{20}{\second} post-stimulus period.
 
 \subsubsection{MB imaging}
-Flies were head fixed with the head tilted acutely downward, rotated \textasciitilde\qty{70}{\degreeCelsius} from its normal resting position.
+Flies were head fixed with the head tilted acutely downward, rotated \textasciitilde\ang{70} from its normal resting position.
 The posterior plate of the head was approximately parallel to the imaging plane, and the antennae were dry underneath the imaging platform.
 The entire perimeter of the head capsule was stabilized to the imaging platform with glue, and the proboscis and legs were immobilized to minimize motion.
-KC somata and PN boutons were imaged with a galvo/resonance scanning system (Thorlabs Bergamo), with the exception of one fly in which KC somata were imaged on a galvo-galvo scanning system at a volumetric sampling rate of 0.55Hz.
+KC somata and PN boutons were imaged with a galvo/resonance scanning system (Thorlabs Bergamo), with the exception of one fly in which KC somata were imaged on a galvo-galvo scanning system at a volumetric sampling rate of \qty{0.55}{\hertz}.
 For PN bouton experiments, odors were presented in a pseudorandom order, with the three trials of each odor being presented contiguously.
-Trials consisted of a 7s baseline recording, a 3s odor pulse, and a 20s post-stimulus period, with stimulus onset occurring every 30s.
+Trials consisted of a \qty{7}{\second} baseline recording, a \qty{3}{\second} odor pulse, and a \qty{20}{\second} post-stimulus period, with stimulus onset occurring every \qty{30}{\second}.
 For KC somata experiments, stimulus order was pseudorandomized such that all odors were presented before any were repeated; thus, repetitions of a given odor usually did not occur on consecutive trials.
 If paraffin was included as an odor stimulus, it was always presented first in each repetition block.
-Trials consisted of a 13s baseline recording, a 2s odor pulse, and a 45s post-stimulus period, with stimulus onset occurring every 60s.
-For resonance imaging of KC somata, movies were collected at a frame rate of \textasciitilde60Hz at 256x256 pixels in fast-\textit{z} mode.
-The FOV was \textasciitilde150x150\um{ } giving a pixel size of \textasciitilde0.6\um/pixel.
-The bulk of the KC somata cluster was captured in 16 planes (and 4 flyback frames) collected 2\um{ }apart, spanning a \textasciitilde30\um{ }depth through the MB.
-This resulted in a volumetric sampling rate of \textasciitilde3Hz.
-For a subset of experiments, KCs were sampled using fewer imaging planes (eleven) with a \textit{z}-step size of 3\um.
+Trials consisted of a \qty{13}{\second} baseline recording, a \qty{2}{\second} odor pulse, and a \qty{45}{\second} post-stimulus period, with stimulus onset occurring every \qty{60}{\second}.
+For resonance imaging of KC somata, movies were collected at a frame rate of \textasciitilde\qty{60}{\hertz} at 256x256 pixels in fast-\textit{z} mode.
+The FOV was \textasciitilde\qtyproduct{150 x 150}{\micro\metre} giving a pixel size of \textasciitilde\qty{0.6}{\micro\metre}/pixel.
+The bulk of the KC somata cluster was captured in 16 planes (and 4 flyback frames) collected \qty{2}{\micro\metre} apart, spanning a \textasciitilde\qty{30}{\micro\metre} depth through the MB.
+This resulted in a volumetric sampling rate of \textasciitilde\qty{3}{\hertz}.
+For a subset of experiments, KCs were sampled using fewer imaging planes (eleven) with a \textit{z}-step size of \qty{3}{\micro\metre}.
 Since odor response rates and odor-odor relationships were similar with these imaging parameters, KC somata datasets were combined.
-For imaging of PN boutons in the MB calyx, movies were collected at a frame rate of \textasciitilde60Hz at a resolution of 256x256 pixels in fast-\textit{z} mode.
-The FOV was \textasciitilde75x75\um{ }yielding a pixel size of \textasciitilde0.3\um/pixel.
-The full population of labeled PN boutons in the calyx was captured using 8 planes (and 2 flyback frames) spaced \textasciitilde3\um{ }apart, spanning a \textasciitilde21\um{ }depth in z, giving a volumetric sampling rate of \textasciitilde6Hz.\\
+For imaging of PN boutons in the MB calyx, movies were collected at a frame rate of \textasciitilde\qty{60}{\hertz} at a resolution of 256x256 pixels in fast-\textit{z} mode.
+The FOV was \textasciitilde\qtyproduct{75 x 75}{\micro\metre} yielding a pixel size of \textasciitilde\qty{0.3}{\micro\metre}/pixel.
+The full population of labeled PN boutons in the calyx was captured using 8 planes (and 2 flyback frames) spaced \textasciitilde\qty{3}{\micro\metre} apart, spanning a \textasciitilde\qty{21}{\micro\metre} depth in z, giving a volumetric sampling rate of \textasciitilde\qty{6}{\hertz}.\\
 
 \subsection{Image analysis}
 \subsubsection{AL imaging}
 Image analysis was performed using custom Python scripts\\
 (\url{https://github.com/ejhonglab/al_analysis}). Motion correction was performed separately in each
 plane using the registration module in Suite2p. ROIs corresponding to individual glomeruli were manually defined in each imaging plane in Fiji\cite{Fiji}, using a combination of the resting fluorescence and per-trial responses to visualize the glomerular boundaries.
-Responses (\DeltaFOverF) were calculated using a 6s baseline ($F_0$) that ended 1s prior to nominal odor onset in each trial.
-The odor response was quantified as the mean \DeltaFOverF\,during the two volumes (\textasciitilde 3s) after odor onset.
+Responses (\DeltaFOverF) were calculated using a \qty{6}{\second} baseline ($F_0$) that ended \qty{1}{\second} prior to nominal odor onset in each trial.
+The odor response was quantified as the mean \DeltaFOverF\,during the two volumes (\textasciitilde\qty{3}{\second}) after odor onset.
 Odor tuning of identified glomeruli, assigned using a combination of anatomical position, size, shape, and responses to a diagnostic panel of 24 narrowly activating odor stimuli, matched previous descriptions\cite{Hallem2006,deBruyne2001,Silbering2011}.
 
 \subsubsection{MB imaging}
@@ -2239,7 +2558,7 @@ As necessary, planes were dropped following motion correction due to FOV drift; 
 
 \paragraph{Source extraction}
 For movies of PN boutons and KC somata collected in the MB, source extraction was carried out using either Suite2p\cite{Suite2p} or CaImAn\cite{CaImAn}.
-For all PN bouton, and for KC somata data collected at a \textit{z}-step of 2\um, Suite2p was used to perform source extraction on a plane-by-plane basis.
+For all PN bouton, and for KC somata data collected at a \textit{z}-step of \qty{2}{\micro\metre}, Suite2p was used to perform source extraction on a plane-by-plane basis.
 ROIs corresponding to PN boutons and odor-evoked signals were extracted in Suite2p's functional mode, using the activity-based algorithm.
 KC ROIs and signals were extracted in Suite2p's anatomical mode, using the `cellpose' model to perform anatomical segmentation on the mean (time-averaged) image.
 Extracted fluorescence traces were neuropil-corrected ($F_{corrected} = F - 0.7 * F_{neuropil}$) and normalized by \textit{Z}-scoring over time.
@@ -2249,17 +2568,17 @@ For PN bouton movies, this step was used to filter out spurious ROIs – only co
 For KC movies, the relatively high level of baseline fluorescence in combination with the use of a nuclear-targeted calcium indicator resulted in very high-quality cellular segmentation, with very few (if any) spurious ROIs.
 \Cref{fig:1}G shows the responses of all extracted cells from one representative experiment, with cells (rows) corresponding to stimulus-responsive clusters displayed at the top of the matrix, and non-responder cell clusters shown at the bottom.
 % TODO define custom command for micrometer?
-CaImAn-MATLAB was used to perform 3D source extraction on KC somata data collected at a \textit{z}-step size of 3\um.
+CaImAn-MATLAB was used to perform 3D source extraction on KC somata data collected at a \textit{z}-step size of \qty{3}{\micro\metre}.
 For each KC, a single ROI was extracted, which was roughly spheroid and spanned multiple planes.
-The fluorescence baseline $F_0$ was computed at each timepoint by taking a fixed percentile (ranging from 20--40\%) of a rolling 30s time window.
+The fluorescence baseline $F_0$ was computed at each timepoint by taking a fixed percentile (ranging from \qtyrange{20}{40}{\percent}) of a rolling \qty{30}{\second} time window.
 Extracted raw calcium signals were detrended and normalized to baseline fluorescence $F_0$ to compute \DeltaFOverF\,responses.
 All components extracted by CaImAn were included in subsequent analyses.
-Between \textasciitilde\num{1500}--\num{1900} KCs and \textasciitilde500--800 PN bouton ROIs were extracted per movie.
+Between \textasciitilde\numrange{1500}{1900} KCs and \textasciitilde\numrange{500}{800} PN bouton ROIs were extracted per movie.
 
 %\subsubsection{Quantification of odor response}
 \paragraph{Quantification of odor response}
-For Suite2p extracted signals, ROI response strength in a single trial was computed by averaging the signal over an expected response peak time window (0.25--2s post-stimulus onset for PN boutons, 2--8s post-stimulus for KCs), and subtracting the mean pre-stimulus baseline (initiating 5s pre-stimulus for PN boutons, and 10s pre-stimulus onset for KC soma).
-For CaImAn-extracted KC signals, the response strength for each trial was calculated by subtracting the median 10s pre-stimulus baseline from the mean 15s post-stimulus \DeltaFOverF\,signal.
+For Suite2p extracted signals, ROI response strength in a single trial was computed by averaging the signal over an expected response peak time window (\qtyrange{0.25}{2}{\second} post-stimulus onset for PN boutons, \qtyrange{2}{8}{\second} post-stimulus for KCs), and subtracting the mean pre-stimulus baseline (initiating \qty{5}{\second} pre-stimulus for PN boutons, and \qty{10}{\second} pre-stimulus onset for KC soma).
+For CaImAn-extracted KC signals, the response strength for each trial was calculated by subtracting the median \qty{10}{\second} pre-stimulus baseline from the mean \qty{15}{\second} post-stimulus \DeltaFOverF\,signal.
 For all datasets, mean odor response strength was computed by averaging across all trials in which the odor was presented.
 
 % TODO TODO TODO restore any of this? first sentence, that references 1H? working text doesn't have it (but unclear if remy is done there)
@@ -2272,7 +2591,7 @@ All extracted components were used in the analysis of response strength and resp
 A cell was considered a `responder' if its trial-averaged response to a given odor exceeded a fixed threshold.
 The response threshold was determined separately for each dataset using ethyl propionate (a consistently strongly activating odor) as a reference, in order to adjust for small differences in responsiveness of different experimental preparations.
 The KC response rate to ethyl propionate was computed over a range of thresholds, with a step size of 0.05 between threshold values.
-Threshold values resulting in a 12--15\% ethyl propionate response rate were selected.
+Threshold values resulting in a \qtyrange{12}{15}{\percent} ethyl propionate response rate were selected.
 The median of these values was chosen as the final response threshold and was used to compute response rates for the other odors in the dataset.
 \fi
 
@@ -2448,7 +2767,7 @@ E.J.H. and T.O.S. supervised the project and acquired funding.
 \supplementsection
 
 % S1 - Sample sizes and genotypes for imaging datasets
-\begin{table}[hbt!]
+\begin{longcaptable}
 \centering
 %\begin{tabular}{llllc}
 % TODO TODO why are vertical rules not goign all teh way up and down?
@@ -2510,14 +2829,16 @@ E.J.H. and T.O.S. supervised the project and acquired funding.
 \hline
 \end{tabularx}
 %\end{tabular}
-\captionbacktorefs{Sample sizes and genotypes for imaging datasets}{table:s1}
+\mycaptionof{table}{Sample sizes and genotypes for imaging datasets}{%
 With the exception of the KC soma datasets, and a small amount of the ORN terminal data, all flies were presented each odor in their respective panels.
 % TODO TODO be consistent about abbreviations for these, both in text and in tables/figures (i may need to regenerate some plots...)
 The first 2/9 ORN terminal flies for odor panel one were missing presentations of aac and vac (\cref{fig:s3}B, bottom), but otherwise all flies were presented each odor in that panel.
 See \Cref{fig:s7} for sampling of each odor pair in the more time-constrained KC soma datasets.
 For these cases where not all odors are presented in each fly, the $N_{flies}$ reported above is the number of flies that had \textit{any} panel odors sampled.
+}
+\label{table:s1}
 \index{tables}
-\end{table}
+\end{longcaptable}
 
 % Table S2 - Odor panel 1 (megamat) details
 \begingroup
@@ -2527,7 +2848,7 @@ For these cases where not all odors are presented in each fly, the $N_{flies}$ r
 % TODO should i just adjust global (or within group) chemfig draw properties instead tho? what is current effect of those params anyway?
 % (doing at least some of that now. think it's fine. delete this comment?)
 
-\begin{table}[hbt!]
+\begin{longcaptable}
 \centering
 
 % TODO delete. think i'm fine with this globally now
@@ -2594,11 +2915,13 @@ pentanoic acid & va & 7991 & 240370 & 7991 \\
 %1-pentanol & 1-5ol & 6276 & 138975 \\
 \bottomrule
 \end{tabular}}
-\captionbacktorefs{Odor information -- panel I}{table:odor_panel1}
+\mycaptionof{table}{Odor information -- panel I}{%
 All odors were at a v/v concentration of $10^{-3}$ in-vial,  diluted in paraffin oil (pfo), prior to our typical 10x air dilution.
 All compounds were purchased from Sigma-Aldrich.
+}
+\label{table:odor_panel1}
 \index{tables}
-\end{table}
+\end{longcaptable}
 \endgroup
 
 \clearpage
@@ -2631,10 +2954,12 @@ All compounds were purchased from Sigma-Aldrich.
 %\begin{longtable}{llp{0.9cm}Pp{1.8cm}MLZ}
 
 % this doesn't seem to work inside longtable
+% (\captionbacktorefs doesn't. \mycaptionof has special handling for longtable, w/ working backlink)
 %\captionbacktorefs{Odor information -- panel II}{table:odor_panel2} \\
 %
 %\caption{Odor information -- panel II}\label{table:odor_panel2} \\
-\caption{Odor information -- panel II\label{table:odor_panel2}} \\
+%\caption{Odor information -- panel II\label{table:odor_panel2}} \\
+\mycaptionof{table}{Odor information -- panel II}{}\label{table:odor_panel2} \\
 \toprule
 % TODO bold header?
 % TODO did this really increase compilation time that much? (yea, seems so.) bold each item individually? (yea)
@@ -2760,7 +3085,7 @@ All other compounds were purchased from Sigma-Aldrich.\\
 % doesn't seem like one outer landscape worked here. one per fig?
 % (also didn't work with one wrapping each fig)
 %\begin{landscape}
-\begin{figure}[H]
+\begin{longcapfigure}
 % also doesn't work here (page not rotated, graphic juts offset a bit to top right-ish)
 %\begin{landscape}
 % TODO need this?
@@ -2774,11 +3099,13 @@ All other compounds were purchased from Sigma-Aldrich.\\
 \includegraphics[width=0.875\textheight, angle=-90, origin=c]{s1_full_diagnostic_guide_page1}
 %\includegraphics[width=0.875\textheight, origin=c]{s1_full_diagnostic_guide_page1}
 % TODO what's the logic behind the "segmented glomeruli" betty decided to show? doesn't even include all the ones targeted directly by diagnostics (e.g. DL5), nor other ones labelled like DP1m (between it and the stuff to the left, should show all segmented. bit confusing)
-\captionbacktorefs{Example diagnostic odor volumetric ORN responses}{fig:s1}
+\mycaptionof{figure}{Example diagnostic odor volumetric ORN responses}{%
 All identified glomeruli are shown across left two columns.
 Example responses of one fly to first 12 of 24 ``diagnostic'' odors.
 (continued on next page)
-\end{figure}
+}
+\label{fig:s1}
+\end{longcapfigure}
 \begin{figure}[H]
 \ContinuedFloat
 % TODO need
@@ -2796,15 +3123,10 @@ Example responses of one fly to remaining 12 of 24 ``diagnostic'' odors.
 
 % Figure S2 - Diagnostic example mean response and all individual fly responses
 % {
-\begin{figure}[H]
+\begin{longcapfigure}
 \centering
 \includegraphics[height=0.875\textheight]{s2_diagnostic_example}
-\captionbacktorefs{Example per-glomerulus diagnostic odor responses and variation across flies}{fig:s2}
-(captions on next page)
-\end{figure}
-\begin{figure}[H]
-\ContinuedFloat
-\caption[]{(continued)}
+\mycaptionof{figure}{Example per-glomerulus diagnostic odor responses and variation across flies}{%
 % TODO was this the same fly as in previous figure? say so, if so
 \textbf{A)} Trial-mean responses to the diagnostic panel in one example fly.
 The first 24 rows are the odors presented in this fly, sorted by which glomerulus they are intended to target, with the responses in these target glomeruli boxed along the diagonal.
@@ -2816,22 +3138,19 @@ Excitatory responses in particular are typically quite stereotyped across flies.
 However, some glomeruli (e.g. DM1 and DP1m) respond weakly and to many odors, with the overall activation strength partially dependent on the particular fly.
 After the first seven flies (all from the first odor panel), we changed the concentration of aphe from $10^{-5}$ to $10^{-4}$, to elicit stronger responses in the VA3 glomerulus this odor targets.
 The first two flies are missing data for vac.
-\end{figure}
+}
+\label{fig:s2}
+\end{longcapfigure}
 % }
 
 % Figure S3 - ORN/PN means/SDs/per-glomerulus sample sizes
 % {
-\begin{figure}[H]
+\begin{longcapfigure}
 \centering
 \includegraphics[width=\textwidth]{s3_orn-pn-mean-err-n_fixed}
-\captionbacktorefs{Per-glomerulus response means, SDs, and sample sizes}{fig:s3}
+\mycaptionof{figure}{Per-glomerulus response means, SDs, and sample sizes}{%
 All panels contain the per-glomerulus response means (top), SDs (middle) and sample size (\# flies) (bottom).
 All mean response plots share the same colorbar limits, and share the non-negative portion of the colorbar with the SD plots.
-(continued on next page)
-\end{figure}
-\begin{figure}[H]
-\ContinuedFloat
-\caption[]{(continued)}
 \textbf{A)} ORN terminal responses to the diagnostic panel, from flies across both of the experimental panels.
 
 \textbf{B)} ORN terminal responses to odor panel one.
@@ -2841,7 +3160,9 @@ All mean response plots share the same colorbar limits, and share the non-negati
 \textbf{D)} PN dendrite responses to odor panel one.
 % TODO 70% of glomeruli or of PNs? matter? (say PNs elsewhere, in original text that said 70%)
 The GH146-Gal4 driver we used for PN imaging only expresses in \textasciitilde70\% of glomeruli\cite{GH146}, hence the smaller number of glomeruli identified.
-\end{figure}
+}
+\label{fig:s3}
+\end{longcapfigure}
 % }
 
 % TODO delete (no longer relevant since i changed split of captions below to force new page anyway)
@@ -2849,7 +3170,7 @@ The GH146-Gal4 driver we used for PN imaging only expresses in \textasciitilde70
 %\clearpage
 
 % removing the H does not prevent this fig from starting on same page as captions above
-\begin{figure}[H]
+\begin{longcapfigure}
 % this causes horrific reordering
 %\begin{figure}[p]
 \includegraphics[width=\textwidth]{s4_hemibrain_fafb_hb-lh_overconvergence_NO-HEMIDRAW}
@@ -2859,7 +3180,7 @@ The GH146-Gal4 driver we used for PN imaging only expresses in \textasciitilde70
 %\includegraphics[width=\textwidth]{s4_hemibrain_fafb_hb-lh_overconvergence_WITH-HEMIDRAW}
 % (adapted from preprint caption)
 %
-\captionbacktorefs{The structure of olfactory glomerular inputs to third-order olfactory neurons}{fig:s4}
+\mycaptionof{figure}{The structure of olfactory glomerular inputs to third-order olfactory neurons}{%
 % TODO need to adapt any of these preprint captions?
 % TODO TODO why do we redefine KC and LHN here but not PN? be consistent
 \textbf{A)} Example reconstruction from the hemibrain connectome\cite{Hemibrain} of a uniglomerular DM2 PN and two example postsynaptic partners, a Kenyon cell (KC) and a lateral horn neuron (LHN).
@@ -2874,11 +3195,6 @@ For this analysis, synaptic connections were binarized (e.g., all glomerular inp
 \textbf{C)} The mapping of glomerular inputs to KCs was represented as a binary matrix, where a 1 in $\text{cell}_{i,j}$ indicates that neuron $i$ receives input from glomerulus $j$.
 The `Curveball' algorithm was used to generate random matrices (null model) that preserve the row and column totals of the original matrix\cite{CurveballMatrixRandomization}.\\
 
-(continued on next page)
-\end{figure}
-\begin{figure}[H]
-\ContinuedFloat
-\caption[]{(continued)}
 \textbf{D)} For each pair of glomeruli, a distribution of the number of KCs receiving co-input from the two glomeruli in each shuffled matrix was generated.
 The observed number of KCs receiving co-input from each pair of glomeruli in the hemibrain was compared to this distribution to generate a $z$-score.
 An example distribution and $z$-score for the over-convergent glomerular pair DM1 and DM3 are given.\\
@@ -2888,18 +3204,20 @@ An example distribution and $z$-score for the over-convergent glomerular pair DM
 The $z$-score for each pair of glomeruli measures the degree to which the glomeruli are over- or under-convergent in the observed population, compared to null models.
 A large positive value indicates strong over-convergence, and a large negative value indicates strong under-convergence.
 The ordering of glomeruli is the same in all matrices and was based on $k$-means clustering of the hemibrain MB matrix. 
-\end{figure}
+}
+\label{fig:s4}
+\end{longcapfigure}
 
 % Figure S5 - Model APL/threshold sensitivity analysis, KC vs model response rates[, hemidraw]
 % {
-\begin{figure}[H]
+\begin{longcapfigure}
 % TODO break B,C into a separate figure (so caption isn't so awkward, at least), with them arrange in one column?
 \includegraphics[width=\textwidth]{s5_apl-thr-sens_and_model-vs-kc-responsivity_WITH-HEMIDRAW}
 % TODO delete. prob want version with hemidraw above now
 %\includegraphics[width=\textwidth]{s5_apl-thr-sens_and_model-vs-kc-responsivity_NO-HEMIDRAW}
 %
 % TODO better caption?
-\captionbacktorefs{Model (vs observed) KC response rates and sensitivity analysis}{fig:s5}
+\mycaptionof{figure}{Model (vs observed) KC response rates and sensitivity analysis}{%
 % TODO TODO TODO actualy refer to A,B,D,E in text (maybe just methods?)
 % currently only talk about C
 \textbf{A)} Matrix of pairwise correlation distances ($1 - \text{Pearson's } r$) between predicted KC responses in the `hemidraw' model for the 17 odors in odor panel one.
@@ -2916,12 +3234,6 @@ The Spearman's $\rho$ between the hemidraw model and observed KC distances is $0
 % TODO refer to thresholding details? say model cells were considered as responding if they spiked at least once?
 % TODO how to format roman numeral?
 \textbf{C)} Response rates to odor panel one in KCs and in uniform, hemibrain, and hemidraw model KCs.\\
-
-(continued on next page)
-\end{figure}
-\begin{figure}[H]
-\ContinuedFloat
-\caption[]{(continued)}
 
 % TODO TODO rename "APL inhibition" (-> "scale of KC<->APL weights") in plot (since it's also the KC->APL drive)
 \textbf{D)} Sensitivity analysis sweeping KC spike threshold (a constant relative to spontaneous input each KC receives) and scale of \APLKC weights.
@@ -2942,9 +3254,11 @@ Only a single digit number of KCs responds to each odor in both increased APL we
 \textbf{E)} Odor-odor correlations (within KCs responding to at least one odor) at the same steps as in \textbf{(D)}.
 Observed decorrelation is not achieved even with extreme values for these two parameters, where very few KCs are responding.
 % TODO mention relationship between the two weights here, or just in methods?
-\end{figure}
+}
+\label{fig:s5}
+\end{longcapfigure}
 
-\begin{figure}[H]
+\begin{longcapfigure}
 \centering
 % even with only one line for caption label (and the following "(captions on next page)" line), 0.9 is too much
 % (causes blank page before)
@@ -2952,12 +3266,7 @@ Observed decorrelation is not achieved even with extreme values for these two pa
 % TODO is this the only place where SD for megamat corrs are shown? (think so) (and do we even show them for validation2 anywhere then?)
 % delete A if shown elsewhere?
 % TODO better caption?
-\captionbacktorefs{Neural RDM SDs and changes of neural alignment with chemical/natural-source spaces relative to ORNs}{fig:s6}
-(captions on next page)
-\end{figure}
-\begin{figure}[H]
-\ContinuedFloat
-\caption[]{(continued)}
+\mycaptionof{figure}{Neural RDM SDs and changes of neural alignment with chemical/natural-source spaces relative to ORNs}{%
 \textbf{A)} Odor-odor correlation distances ($1 - \text{Pearson's } r$) between odor representations in ORN terminals ($n{=}9$), PN dendrites ($n{=}7$), PN boutons ($n{=}6$), KC claws ($n{=}4$), and KC somata ($n{=}4{-}18$).
 Top row, mean Pearson correlations across flies.
 Upper triangle: trial-trial correlations.
@@ -2974,17 +3283,21 @@ Boxes indicate the mean and interquartile range; whiskers show central 90\% of e
 \textbf{Bi)} Bootstrap, with \num{5000} draws of the 136 odor pairs with replacement, using the same odor pairs for each stage and the ORN terminals when computing.\\
 
 \textbf{Bii)} Subsampling, with \num{5000} draws of 80\% of odor pairs without replacement.
-\end{figure}
+}
+\label{fig:s6}
+\end{longcapfigure}
 
 % NOTE: this may be a table in text, but i think i want it as a figure for thesis at least
 % Also, remy may have her own supplement fig 7 regarding main text fig 7, but since I'm including
 % neither of those, I'm numbering this one S7.
-\begin{figure}%[H]
+\begin{longcapfigure}
 \includegraphics[width=\textwidth]{my_s7_odor-pair-n}
-\captionbacktorefs{KC soma sample sizes for odor pairs within brains}{fig:s7}
+\mycaptionof{figure}{KC soma sample sizes for odor pairs within brains}{%
 As not all odors are presented in each fly, for these KC soma datasets, we report the sample size $n$ (\# of flies) for which both odors are measured together in the same fly.
 Odor panel I (left) has a minimum of $n{=}4$ flies, while panel II (right) has a minimum of $n{=}2$ flies.
-\end{figure}
+}
+\label{fig:s7}
+\end{longcapfigure}
 
 % TODO move into supplementsection def? (can't seem to, at least not in the place i tried)
 \processdelayedfloats
@@ -3024,7 +3337,7 @@ These approaches are elegant in that they can use natural sources as input, rath
 It is also difficult to use these approaches to present subsets of the components of a natural mixture, and although some work has developed solutions to this problem, it introduces further complexity while suffering from the same distortions on the individual components\cite{GCRecombination1,GCRecombination2,GCRecombination3}. 
 
 The only real alternative may be to optogenetically activate certain patterns of receptor neurons, and although this has been done, it has major downsides that prevent it from being a general solution\cite{Jeanne2018,Chong2020}.
-Optogenetic activation can not always achieve the firing rates that can be evoked by odors, especially the high firing rates seen in \textit{Drosophila} ORNs (which can often reach \textasciitilde300Hz), while also imposing enormous additional experimental difficulty\cite{Fişek2021}.
+Optogenetic activation can not always achieve the firing rates that can be evoked by odors, especially the high firing rates seen in \textit{Drosophila} ORNs (which can often reach \textasciitilde\qty{300}{\hertz}), while also imposing enormous additional experimental difficulty\cite{Fişek2021}.
 The genetics to introduce these photosensitive channels also limit what other genetic (or optogenetic) manipulations can be made.
 
 One might naively assume that mixtures should evoke stronger responses than any of the components, as all the components are still present (at the same concentration, typically), and there is more total odor delivered to the animal. 
@@ -3085,14 +3398,16 @@ For this tradeoff, we chose to design mixtures of five monomolecular components.
 %These experiments could identify properties of mixture encoding that vary with concentration (or response intensity) scale, and are more tractable when restricted to the binary mixtures.
 
 % Kiwi chromatogram
-\begin{figure}
+\begin{longcapfigure}
 \centering
 % TODO set fixed size?
 \includegraphics[width=0.6\textwidth]{kiwi_chromatograms_day1-fermented-only}
-\captionbacktorefs{Chromatogram of lightly fermented kiwi headspace}{fig:kiwi_chromatogram}
+\mycaptionof{figure}{Chromatogram of lightly fermented kiwi headspace}{%
 % TODO list major peaks by retention time (what are they tho...)?
 Chromatogram of fermented kiwi headspace volatiles, including the five major components we selected for mix A (\cref{table:mix_odors}).
-\end{figure}
+}
+\label{fig:kiwi_chromatogram}
+\end{longcapfigure}
 
 % TODO move some of this to methods? prob not most of it
 The first mixture I constructed (``mix A'') was based on chemistry I did to describe the headspace components of an odor likely to be appetitive to flies: kiwi in the early stages of yeast fermentation.
@@ -3134,7 +3449,7 @@ We clustered the responses in \Crefwithbackref{fig:clust_hierarch_binary} and \r
 % Mix A & B KC clustering figures
 % {
 % TODO why is a larger fold not working (to end of per-odor hists)? anything after first of those doesn't work. similar reason to issue w/ preamble folding?
-\begin{figure}[t]
+\begin{longcapfigure}
   \centering
   % need 0.8 instead of 0.85\textheight here, unless i want to break caption to next page, or shorten it
   \subfloat{\includegraphics[width=0.44\textwidth,height=0.775\textheight]{clust_hierarch_kiwi_binary_trimmed}}
@@ -3150,7 +3465,7 @@ We clustered the responses in \Crefwithbackref{fig:clust_hierarch_binary} and \r
   %\subfloat{\includegraphics[width=0.52\textwidth,
   %  height=\dimexpr\textheight - 4\baselineskip - \abovecaptionskip - \belowcaptionskip\relax
   %]{clust_hierarch_control_binary_trimmed}}
-\captionbacktorefs{Clustered KC responses to 2-component mix A \& B}{fig:clust_hierarch_binary}
+\mycaptionof{figure}{Clustered KC responses to 2-component mix A \& B}{%
 % TODO include total # ROIs for all these (title just has # responding)
 The highest concentration (1x) has each component at the same concentration as in \cref{table:mix_odors}, and is the only subset of this data analyzed except for \cref{fig:mixsupp_dists_diag-binaries_kc-only,fig:mixsupp_dists_pair-dilutions}. The remaining two dilutions step each component down by a factor of 10 or 100.
 % TODO de-dupe this w/ below (at least have one refer to other, or ideally both to methods)
@@ -3158,21 +3473,25 @@ The highest concentration (1x) has each component at the same concentration as i
 ROIs with responses to all odors below response threshold ($\KCRespStat < 1.5$) are excluded from this plot.
 See \cref{table:sample_sizes} for total ROIs per dataset.
 See Methods for hierarchical clustering details.
-\end{figure}
+}
+\label{fig:clust_hierarch_binary}
+\end{longcapfigure}
 
-\begin{figure}[t]
+\begin{longcapfigure}
   \centering
   % height=0.9\textheight caused caption to overflow
   \subfloat{\includegraphics[width=0.44\textwidth,height=0.85\textheight]{clust_hierarch_kiwi_5comp_trimmed}}
   \subfloat{\includegraphics[width=0.53\textwidth,height=0.85\textheight]{clust_hierarch_control_5comp_trimmed}}
-\captionbacktorefs{Clustered KC responses to 5-component mix A \& B}{fig:clust_hierarch_5comp}
+\mycaptionof{figure}{Clustered KC responses to 5-component mix A \& B}{%
 % TODO include total # ROIs for all these (title just has # responding) (just ref to that table:sample_sizes now)
 % TODO add something to methods section about clustering details (all using clustermap defaults [metric='euclidean', method='average']  (which just change defaults to scipy.cluster.hierarchy.linkage (and then my call adds optimal_ordering=True to that)
 % TODO provide link to relevant methods section, once i write it
 ROIs with responses to all odors below response threshold ($\KCRespStat < 1.5$) are excluded from this plot.
 See \cref{table:sample_sizes} for total ROIs per dataset.
 See Methods for hierarchical clustering details.
-\end{figure}
+}
+\label{fig:clust_hierarch_5comp}
+\end{longcapfigure}
 %\todo{actually add + ref to methods section}
 % }
 
@@ -3184,38 +3503,44 @@ For the five-component mix B, the mixture suppression was even more prominent af
 
 % Mix A & B KC intensity figures
 % {
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[width=\textwidth]{intensity_kc-only_binary}
 % TODO make sure (at end) language is consistently either "binary" or "2-component".
 % i suppose most/all plots currently have 2-component, but maybe ok to stick to "binary" in text still?
-\captionbacktorefs{KC mean responses to binary mixtures}{fig:intensity_kc-only_binary}
+\mycaptionof{figure}{KC mean responses to binary mixtures}{%
 Mean response amplitude, as measured by \KCRespStat values (left), and fraction of cells responding (``mean response rate''), after binarizing response amplitude with a threshold of $1.5$ (right).
 All statistics were computed across all KC ROIs from Suite2p, without dropping cells responding subthreshold to all odors.
 $n{=}3$ flies for each mix.
 % TODO add terminology entry for ROIs ("region of interest")
 % TODO terminology for Suite2p Fc?
-\end{figure}
+}
+\label{fig:intensity_kc-only_binary}
+\end{longcapfigure}
 
-\begin{figure}
+\begin{longcapfigure}
 \includegraphics[width=\textwidth]{intensity_kc-only_5comp}
-\captionbacktorefs{KC mean responses to five-component mixtures}{fig:intensity_kc-only_5comp}
+\mycaptionof{figure}{KC mean responses to five-component mixtures}{%
 % TODO refer to a more standard methods section for this?
 Mean response amplitude and mean response rate are as described in \cref{fig:intensity_kc-only_binary}.
 For mix A and B, $n{=}7$ and $4$, respectively.
-\end{figure}
+}
+\label{fig:intensity_kc-only_5comp}
+\end{longcapfigure}
 % }
 
 To investigate the consistency of mixture suppression across concentration scales, we also presented each binary mixture at additional 10x and 100x dilutions and observed that the trend of weaker mixture responses remained for both binary mixtures, measured in terms of both mean KC population activity and response rate (\crefwithbackref{fig:intensity_kc-only_pair-dilutions}).
 The magnitude of mean response suppression may have started to decrease slightly in the 100x dilution, so it may not be invariant to larger changes in odor concentrations.
 
 % Binary pair-dilution indensity figure
-\begin{figure}
+\begin{longcapfigure}
 \includegraphics[width=\textwidth]{intensity_kc-only_pair-dilutions}
-\captionbacktorefs{KC mean responses to three dilutions of 2-component mixtures}{fig:intensity_kc-only_pair-dilutions}
+\mycaptionof{figure}{KC mean responses to three dilutions of 2-component mixtures}{%
 Data for the 1x dilution case (right group in each panel) is the same data shown in \cref{fig:intensity_kc-only_binary}, with mean response amplitude/rate also as described there.
 % TODO refer to a more standard methods section for the reference to reponse calculations?
-\end{figure}
+}
+\label{fig:intensity_kc-only_pair-dilutions}
+\end{longcapfigure}
 % TODO is it suprising at all that KC odor response intensity consistent across this range? existing data like that?
 % (b/c ORN respresentation probably does broaden out a bit in general, ramping across 3 orders of magnitude)
 
@@ -3230,41 +3555,49 @@ Data for the 1x dilution case (right group in each panel) is the same data shown
 % Per-odor distributions of KC and ORN intensity
 % {
 % TODO make smaller, to fit two per page, for comparison?
-\begin{figure}
+\begin{longcapfigure}
 % TODO regen (or use?) logscaled version of full population counts (the left panels)?
 \centering
 \includegraphics[width=\textwidth]{per-odor_counts_kiwi2_kc-orn}
-\captionbacktorefs{Mix $A_2$ per-odor KC \& ORN response distributions}{fig:per-odor_counts_kiwi2_kc-orn}
+\mycaptionof{figure}{Mix $A_2$ per-odor KC \& ORN response distributions}{%
 % TODO TODO TODO justify this strict KC threshold (via application to megamat? via comparison of model response rates to the mean response rate we get with this? via sensitivity analysis, or at least trying one other response rate?) (i do have results supporting this now, by retrying w/ 0.8 thresh)
 Left: distributions (across KCs or glomeruli) of all odor responses, with a vertical line indicating the response threshold used for the right panels (1.5 for KCs and 0.8 for ORNs).
 Right: similar distributions, but now only including responses that are at or above threshold. This gives a sense both of the number of responses that pass threshold, and also how quickly they fall off at increasing response amplitudes.
-\end{figure}
+}
+\label{fig:per-odor_counts_kiwi2_kc-orn}
+\end{longcapfigure}
 % (this is last place the end fold mark worked, with one starting at all intro figs)
 
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[width=\textwidth]{per-odor_counts_control2_kc-orn}
-\captionbacktorefs{Mix $B_2$ per-odor KC \& ORN response distributions}{fig:per-odor_counts_control2_kc-orn}
+\mycaptionof{figure}{Mix $B_2$ per-odor KC \& ORN response distributions}{%
 Organization and thresholds are as in \cref{fig:per-odor_counts_kiwi2_kc-orn}.
-\end{figure}
+}
+\label{fig:per-odor_counts_control2_kc-orn}
+\end{longcapfigure}
 % (end fold mark did NOT work here, when started before all intro KC figs)
 
-\begin{figure}
+\begin{longcapfigure}
 \centering
 % TODO want full textwidth here?
 \includegraphics[width=\textwidth]{per-odor_counts_kiwi5_kc-orn}
-\captionbacktorefs{Mix $A_5$ per-odor KC \& ORN response distributions}{fig:per-odor_counts_kiwi5_kc-orn}
+\mycaptionof{figure}{Mix $A_5$ per-odor KC \& ORN response distributions}{%
 % TODO want to restore manual ref here with "figure " prefix (\Cref would give "Figure " and \cref gives "fig. ")?
 Organization and thresholds are as in \cref{fig:per-odor_counts_kiwi2_kc-orn}.
-\end{figure}
+}
+\label{fig:per-odor_counts_kiwi5_kc-orn}
+\end{longcapfigure}
 
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[width=\textwidth]{per-odor_counts_control5_kc-orn}
-\captionbacktorefs{Mix $B_5$ per-odor KC \& ORN response distributions}{fig:per-odor_counts_control5_kc-orn}
+\mycaptionof{figure}{Mix $B_5$ per-odor KC \& ORN response distributions}{%
 % TODO want to restore manual ref here with "figure " prefix (\Cref would give "Figure " and \cref gives "fig. ")?
 Organization and thresholds are as in \cref{fig:per-odor_counts_kiwi2_kc-orn}.
-\end{figure}
+}
+\label{fig:per-odor_counts_control5_kc-orn}
+\end{longcapfigure}
 % }
 
 Suppression of average mixture responses could be caused by either a change in response magnitude (among responding units) or a change in the number of responding units.
@@ -3300,10 +3633,10 @@ The largest class of cells was consistently those that responded to no odors in 
 
 % KC response class means and counts
 % {
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[width=\textwidth]{response-class-means_kc_binary}
-\captionbacktorefs{KC 2-component mix response class means and counts}{fig:response-class-means_kc_binary}
+\mycaptionof{figure}{KC 2-component mix response class means and counts}{%
 Left: mean responses across all KCs within a response class.
 
 Right: counts of this response class, across KCs from all flies, where the denominator is the total number of ROIs detected (rather than the filtered subset used for most analyses; see \cref{table:sample_sizes}).
@@ -3313,28 +3646,32 @@ Different colors in right panel bars correspond to different flies.
 %Classes containing less than 0.25\% of ROIs have been excluded, so percentages may not sum to 100.
 % TODO delete text (already in table) refer to table!
 %Mix-responsive fractions are 2.63\% for mix A and 3.64\% for mix B.
-\end{figure}
+}
+\label{fig:response-class-means_kc_binary}
+\end{longcapfigure}
 
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[width=\textwidth]{response-class-means_kc_5comp}
-\captionbacktorefs{KC five-component mix response class means and counts}{fig:response-class-means_kc_5comp}
+\mycaptionof{figure}{KC five-component mix response class means and counts}{%
 Similar to \cref{fig:response-class-means_kc_binary}.
 Colors again correspond to different flies, but these are all different flies from the binary experiments (colors are not shared across mix A \& B for the KC dataset).
 % TODO move to methods (+ delete everywhere)
 %Classes containing less than 0.25\% of ROIs have been excluded, so percentages may not sum to 100.
 % TODO delete text (already in table) refer to table!
 %Mix-responsive fractions are 2.74\% for mix A and 3.14\% for mix B.
-\end{figure}
+}
+\label{fig:response-class-means_kc_5comp}
+\end{longcapfigure}
 % }
 
 We expected that there might be some KCs that responded exclusively to the mix (and not to any of its components); perhaps because a KC samples two glomeruli (each selective to one component's ORN representation), where neither input is strong enough alone to drive the KC to spike, and both inputs need to be active together.
-To our surprise, we observed no cells that responded exclusively to either binary mixture, and only small populations of cells (0.9--1.7\%) selective for either of the five-component mixtures A or B.
+To our surprise, we observed no cells that responded exclusively to either binary mixture, and only small populations of cells (\qtyrange{0.9}{1.7}{\percent}) selective for either of the five-component mixtures A or B.
 Despite their small size, these mix-selective populations were present in every fly.
 The slightly larger population of mix-selective KCs for mix B compared to mix A might reflect the comparatively greater chemical diversity of mix B, reflected in the more diverse ORN representations driven by the components of mix B (seen in the decreased correlation among mix B components compared to mix A in \crefwithbackref{fig:orn_corrs}).
 
 After the non-responders, the majority of the remaining KCs responded selectively to single odors, and \textit{not} to the mix, a type of response class we call ``component-selective''.
-This fraction of KCs ranged from \textasciitilde8--9\% in the binary mixtures to \textasciitilde17--19\% in the five-component mixtures (\cref{table:kc_resp_types}).
+This fraction of KCs ranged from \textasciitilde\qtyrange{8}{9}{\percent} in the binary mixtures to \textasciitilde\qtyrange{17}{19}{\percent} in the five-component mixtures (\cref{table:kc_resp_types}).
 % TODO TODO in discussion, talk about how we don't see same segmenting behavior as prominent in laurent paper
 % (that responsd the to components regardless of whether alone or which mix they are in)
 The remaining fraction of cells, in response classes other than non-responders or component-selective cells, was less than 10\% in all cases, and less than 5\% for all but five-component mix A.
@@ -3342,7 +3679,7 @@ The remaining fraction of cells, in response classes other than non-responders o
 %It is interesting that the KCs are so selective for single components, as the ORNs they ultimately receive input from overwhelming respond to multiple odors (\crefwithbackref{fig:frac_response_class_kc-orn}).
 
 % Fraction of KCs in different response classes
-\begin{table}[hbt!]
+\begin{longcaptable}
 % TODO TODO TODO also include # responders to each mix, either in this table or elsewhere?
 % TODO TODO TODO and/or (only?) report percentages wrt responding fraction?
 % (or fraction responding to component in some cases?)
@@ -3371,10 +3708,12 @@ The remaining fraction of cells, in response classes other than non-responders o
 % (i liked tabular better w/ everything else as-is. tabularx still wasn't bottom justifying the NComps and Response Type multirow columns, and other things were uglier)
 %\end{tabularx}
 \end{tabular}
-\captionbacktorefs{KC response class percentages}{table:kc_resp_types}
+\mycaptionof{table}{KC response class percentages}{%
 The mix-responsive percentage includes the mix-selective cells, as well as those that also respond to components.
+}
+\label{table:kc_resp_types}
 \index{tables}
-\end{table}
+\end{longcaptable}
 
 \subsection{More KC mixture suppression in five-component than binary mixtures}
 % TODO move to discusssion
@@ -3400,15 +3739,17 @@ where negative values should be interpreted as mixture suppression, and positive
 % END PART TO MOVE TO METHODS
 
 % Distributions of mixture suppression for 2/5-component mix A/B (KCs vs ORNs)
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[width=\textwidth]{mixsupp_dists_kc-orn}
 % TODO TODO regenerate at least KC side with fixed xlim (and maybe draw dotted vertical lines at means?), to make comparing across rows more sensible
-\captionbacktorefs{Distributions of KC and ORN mix suppression}{fig:mixsupp_dists_kc-orn}
+\mycaptionof{figure}{Distributions of KC and ORN mix suppression}{%
 Density of mixture suppression across KCs (left) or glomeruli (right), for both mix A (top) and mix B (bottom).
 Different line colors indicate the number of components in that variant of the corresponding mixture.
 Mixture suppression was computed only within cells that responded (above threshold) to at least one odor.
-\end{figure}
+}
+\label{fig:mixsupp_dists_kc-orn}
+\end{longcapfigure}
 
 When comparing KC mixture suppression distributions for the two- \& five-component variants of each mixture, it was clear that there was more mixture suppression to the five-component mixtures (\crefwithbackref{fig:mixsupp_dists_kc-orn}; left).
 Within mixtures of a given number of components, the mixture suppression distributions seemed similar, indicating the additional complexity of the mixtures with more components is important to their ability to recruit more KC mixture suppression.
@@ -3418,12 +3759,14 @@ Within mixtures of a given number of components, the mixture suppression distrib
 %The distributions of mixture suppression across glomeruli once again indicate there are not significant populations exhibiting meaningful mixture suppression or synergy, at least for these particular mixtures.
 
 % Distributions of KC binary mix suppression across pair dilutions
-\begin{figure}
+\begin{longcapfigure}
 \includegraphics[width=\textwidth]{mixsupp_dists_kc-only_pair-dilutions}
 % TODO remove the explicit listing of the two odors in the binary mixture in titles for this fig, for consistency
-\captionbacktorefs{Distributions of KC mix suppression, for three dilutions of the binary mix A \& B}{fig:mixsupp_dists_pair-dilutions}
+\mycaptionof{figure}{Distributions of KC mix suppression, for three dilutions of the binary mix A \& B}{%
 See \cref{fig:clust_hierarch_binary} for more details on the stimuli.
-\end{figure}
+}
+\label{fig:mixsupp_dists_pair-dilutions}
+\end{longcapfigure}
 
 We briefly returned to analyzing the dilutions of the binary mixtures, to ask whether the degree of mixture suppression seemed to vary across the concentration scales (\crefwithbackref{fig:mixsupp_dists_pair-dilutions}).
 % TODO move expectation to discussion?
@@ -3446,34 +3789,40 @@ For these experiments we chose the following components: 2-heptanone, farnesol, 
 
 % weak binaries figures (clustering, intensity, and mix suppression distributions)
 % {
-\begin{figure}
+\begin{longcapfigure}
 \includegraphics[height=0.8\textheight]{clust_hierarch_diag-binaries}
 % overflows w/ current caption
 %\includegraphics[height=0.85\textheight]{clust_hierarch_diag-binaries}
-\captionbacktorefs{Clustered KC responses to binary mixtures of weak odors}{fig:clust_diag-binaries}
+\mycaptionof{figure}{Clustered KC responses to binary mixtures of weak odors}{%
 % TODO move to methods -> ref here -> make full height again?
 % TODO TODO change title to only say n=12 once, since all odors are measured in all flies
 As before, only cells responding to at least one component or the mixture are shown.
 Unlike other KC analyses, this dataset considers KCs as responding to an odor if they respond above-threshold on at least 3 of 4 trials (more trials than the 3 for the other datasets), with a lower \KCRespStat threshold of 1.0.
 All odors were measured in each of the 12 flies, and all odors (including components) were only measured in one set of trials, thus the 2h/ma/farn data in each of the three subplots are a reanalyzed version of the same data, to compare within each mixture.
-\end{figure}
+}
+\label{fig:clust_diag-binaries}
+\end{longcapfigure}
 
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[width=\textwidth]{intensity_diag-binaries_kc-only}
-\captionbacktorefs{KC average responses to binary mixtures of weakly-activating odors}{fig:intensity_diag-binaries_kc-only}
+\mycaptionof{figure}{KC average responses to binary mixtures of weakly-activating odors}{%
 % TODO also refer to either methods or first KC-only figure for description of top statistics
 KC response calling (for right panel) is as described in \cref{fig:clust_diag-binaries}.
-\end{figure}
+}
+\label{fig:intensity_diag-binaries_kc-only}
+\end{longcapfigure}
 
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[height=3in]{mixsupp_dists_diag-binaries_kc-only_hue}
-\captionbacktorefs{Distributions of KC mixture suppression to binary mixtures of weakly-activating odors}{fig:mixsupp_dists_diag-binaries_kc-only}
+\mycaptionof{figure}{Distributions of KC mixture suppression to binary mixtures of weakly-activating odors}{%
 % TODO add note on statistic it's computed on (and elsewhere? consolidate?)
 Distributions are all centered around 0, without much bias towards negative values (increased mixture suppression). Similar distributions for each of these three mixtures. $n$=12 flies.
 % TODO what's standard format papers use to put N in caption? copy that and be consistent
-\end{figure}
+}
+\label{fig:mixsupp_dists_diag-binaries_kc-only}
+\end{longcapfigure}
 % }
 
 Clustered responses for these three mixtures can be seen in \Crefwithbackref{fig:clust_diag-binaries}.
@@ -3500,38 +3849,44 @@ As expected, these odors that drive drastically less ORN and KC input also produ
 % TODO move the odor-odor correlations to supplement? (if i'm only gonna discuss in discussion...?)
 % ORN figures (mean responses & odor-odor correlations)
 % {
-\begin{figure}
+\begin{longcapfigure}
 \includegraphics[width=\textwidth]{orn_mean_responses}
-\captionbacktorefs{Per-glomerulus mean ORN responses to odors in mix A \& B}{fig:orn_mean_responses}
+\mycaptionof{figure}{Per-glomerulus mean ORN responses to odors in mix A \& B}{%
 % TODO get methods details for sampling rate
 % TODO more details about glomeruli sampling (maybe just make and refer to N plot)
-Responses (\ORNRespStat) were defined as the peak (either positive or negative, whichever has the highest absolute value) response within the 2 volumes (\textasciitilde2 seconds at usual volumetric sampling rate), with the sign preserved.
+Responses (\ORNRespStat) were defined as the peak (either positive or negative, whichever has the highest absolute value) response within the 2 volumes (\textasciitilde\qty{2}{\second} at usual volumetric sampling rate), with the sign preserved.
 This value was then averaged over the three trials, and over all of the flies with that glomerulus identified (see \crefwithbackref{fig:orn_stddev_and_n} for description of sampling of each glomerulus).
 Left: responses to the ``diagnostic''\nomenclature{diagnostic odor}{an odor used to evoke activity in known glomeruli, typically aiming to activate one glomerulus in particular.
 Used to assist in defining ROIs for and identifying glomeruli
 } odors used to assist in identifying and segmenting the glomeruli.
 The same 9 flies have data from each of these three panels: diagnostics, mix A, \& mix B.
-\end{figure}
+}
+\label{fig:orn_mean_responses}
+\end{longcapfigure}
 
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[width=4in]{orn_corrs}
-\captionbacktorefs{ORN correlations between odors within mix A \& B}{fig:orn_corrs}
+\mycaptionof{figure}{ORN correlations between odors within mix A \& B}{%
 Odor-odor Pearson correlations were computed within each fly (across the glomeruli identified in the particular fly), and then the correlation matrices were averaged across flies.
-\end{figure}
+}
+\label{fig:orn_corrs}
+\end{longcapfigure}
 % }
 
 % TODO TODO use? (/delete) (move to supplement?)
 % KC vs ORN response class summary
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[width=\textwidth]{frac_response_class_kc-orn}
 % TODO better name in this caption than "response class summary"?
-\captionbacktorefs{KC \& ORN response class summary}{fig:frac_response_class_kc-orn}
+\mycaptionof{figure}{KC \& ORN response class summary}{%
 Response classes grouped by whether they are mix-responsive and their number of component responses, ignoring which component had the maximal response.\\
 ORN response threshold was chosen as 0.8 \DeltaFOverF.
 Breakdown of the ORN response classes can be seen in \crefwithbackref{fig:response-class-means_orn_binary} and \crefwithbackref{fig:response-class-means_orn_5comp}.
-\end{figure}
+}
+\label{fig:frac_response_class_kc-orn}
+\end{longcapfigure}
 
 With many studies demonstrating receptor-level antagonism between odors, and other effects that could support mixture suppression in the periphery, we asked to what extent mixture suppression in the KCs seems inherited from effects in the ORNs.
 We recorded ORN axon terminals in the AL glomeruli, with the same two- \& five-component mixture panels, in 9 flies (\crefwithbackref{fig:orn_mean_responses}).
@@ -3560,17 +3915,21 @@ Comparing this with the much more dramatic KC mixture suppression to all of the 
 % ORN intensity plots (raw and normalized vs KC)
 % {
 % TODO delete? (no, b/c normalized one not in raw units)
-\begin{figure}
+\begin{longcapfigure}
 \includegraphics[width=\textwidth]{intensity_orn-only}
-\captionbacktorefs{Mean ORN response to each odor}{fig:intensity_orn}
+\mycaptionof{figure}{Mean ORN response to each odor}{%
 Responses were calculated within each fly (per-glomerulus, as described in \cref{fig:orn_mean_responses}), and then averaged across all glomeruli per-fly to produce each of the points shown here. The ea and eb component data is the same across the two- \& five-component plots, as they were only measured once for each fly (in contrast to the KC data, where the binary mixtures are in separate recordings, with separate flies).
-\end{figure}
+}
+\label{fig:intensity_orn}
+\end{longcapfigure}
 
-\begin{figure}
+\begin{longcapfigure}
 \includegraphics[width=\textwidth]{intensity_orn-vs-kc}
-\captionbacktorefs{Normalized KC and ORN responses to each odor}{fig:intensity_orn-vs-kc}
+\mycaptionof{figure}{Normalized KC and ORN responses to each odor}{%
 ORN data is as shown in \cref{fig:intensity_orn}, but normalized so the odor with the highest mean response has its mean scaled to 1, and all other odors scaled accordingly. The KC normalization works in the same manner, with the purpose being to compare relative activation of odors, and in particular the mix to the most activating component.
-\end{figure}
+}
+\label{fig:intensity_orn-vs-kc}
+\end{longcapfigure}
 % }
 
 \subsection{Model KCs also component-selective, but more mix-responsive than observed}
@@ -3582,12 +3941,12 @@ Would there be as many component-selective model KCs as we observed?
 
 Using our ORN data as input, we ran the modified model to get the responses clustered in \Crefwithbackref{fig:clust_hierarch_model}.
 We categorized model KC responses into response classes (\crefwithbackref{fig:response-class-means_model_5comp}), as for measured KC responses before.
-As in our KC measurements, many model KC responses were selective for individual components (6.4--8.7\%; \crefwithbackref{table:model_vs_kc_resp_types_5comp}), although this was still much less than in our KC measurements (16.9--18.6\%).
+As in our KC measurements, many model KC responses were selective for individual components (\qtyrange{6.4}{8.7}{\percent}; \crefwithbackref{table:model_vs_kc_resp_types_5comp}), although this was still much less than in our KC measurements (\qtyrange{16.9}{18.6}{\percent}).
 However, unlike what we observed in the KCs, the model KC population had many more cells that responded \textit{both} to the mix as well as one or more components (``mix-responsive'') (\cref{table:model_vs_kc_resp_types_5comp}; \crefwithbackref{fig:frac_response_class_model-vs-kc}).
 For the binary mixtures $A_2$ \& $B_2$, the model did a much worse job of predicting component-selective cells, and we did not analyze that data in detail.
 
 % Fraction of model and observed KCs in different response classes
-\begin{table}[hbt!]
+\begin{longcaptable}
 % TODO TODO TODO also include # responders to each mix, either in this table or elsewhere?
 % TODO TODO TODO and/or (only?) report percentages wrt responding fraction?
 % (or fraction responding to component in some cases?)
@@ -3614,20 +3973,23 @@ For the binary mixtures $A_2$ \& $B_2$, the model did a much worse job of predic
 & \textcolor{gray}{mix-selective} & \textcolor{gray}{1.7\%} & \textcolor{gray}{0.4\%}\\
 \hline
 \end{tabular}
-\captionbacktorefs{Model vs KC five-component response type percentages}{table:model_vs_kc_resp_types_5comp}
+\mycaptionof{table}{Model vs KC five-component response type percentages}{}
+\label{table:model_vs_kc_resp_types_5comp}
 \index{tables}
-\end{table}
+\end{longcaptable}
 
 % TODO TODO TODO delete much or all of this. esp references to "uniform" model, or claw model improvements relative to it
 \iffalse
 % TODO delete (/move to supp)
-\begin{figure}[t]
+\begin{longcapfigure}
 \centering
 \includegraphics[height=0.85\textheight]{clust_hierarch_diag-binaries_model-claw_trimmed}
-\captionbacktorefs{Clustered model KC responses to binary mixtures of weak odors}{fig:clust_hierarch_model_diag-binaries}
+\mycaptionof{figure}{Clustered model KC responses to binary mixtures of weak odors}{%
 % TODO say anything more here?
 Compare with KC responses in \cref{fig:clust_diag-binaries}.
-\end{figure}
+}
+\label{fig:clust_hierarch_model_diag-binaries}
+\end{longcapfigure}
 \textcolor{gray}{
 Unlike the mix A \& B cases where we have ORN measurements for all the odors we hoped to model, for the binary mixtures of weak odors we only had ORN measurements for the components\footnotemark[1]{} but not their mixtures.
 To still attempt to model the mixture responses of the three weak odors, we took the max across the two mean glomerular response vectors (from measured component data) to generate a synthetic mixture response.
@@ -3646,7 +4008,7 @@ For mix A \& B we use our ORN measurements as input, and running the same two mo
 % (probably)
 % TODO TODO merge in inkscape, or at least make sure aspect ratio is preserved here
 % (that would also help fix current lack of height alignment... or need to handle that separately. bottom edge currently does not align)
-\begin{figure}[t]
+\begin{longcapfigure}
   \centering
   % way to add title centered over each subfloat (to label mix A/B here?) (have in input now anyway)
   \subfloat{\includegraphics[width=0.43\textwidth,height=0.9\textheight]{clust_hierarch_kiwi_model-claw_trimmed}}
@@ -3654,51 +4016,59 @@ For mix A \& B we use our ORN measurements as input, and running the same two mo
   \vrule
   \hfill
   \subfloat{\includegraphics[width=0.50\textwidth,height=0.9\textheight]{clust_hierarch_control_model-claw_trimmed}}
-\captionbacktorefs{Clustered model KC responses to mix A \& B}{fig:clust_hierarch_model}
+\mycaptionof{figure}{Clustered model KC responses to mix A \& B}{%
 % TODO talk about spike counts and logistic scale here?
 % TODO talk about how it includes both binary and five-comp (or split out)?
 Compare with KC responses in \cref{fig:clust_hierarch_binary,fig:clust_hierarch_5comp}.
-\end{figure}
+}
+\label{fig:clust_hierarch_model}
+\end{longcapfigure}
 % }
 
 % Model response classes
 % {
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[width=\textwidth]{response_class_means_and_counts_kiwi-control_claw-only}
-\captionbacktorefs{Model five-component mix A response class means and counts}{fig:response-class-means_model_5comp}
+\mycaptionof{figure}{Model five-component mix A response class means and counts}{%
 % TODO move to methods (+ delete everywhere)
 %Classes containing less than 0.25\% of ROIs have been excluded, so percentages may not sum to 100.
 % TODO delete text (already in table) refer to table!
 %Mix-responsive fractions are 7.91\% for mix A and 4.45\% for mix B.\\
 Compare to KC tuning in \cref{fig:response-class-means_kc_5comp}.
-\end{figure}
+}
+\label{fig:response-class-means_model_5comp}
+\end{longcapfigure}
 % }
 
 % Response class summary: model vs KCs
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[width=\textwidth]{frac_response_class_model-vs-kc}
 % TODO better name in this caption than "response class summary"?
-\captionbacktorefs{KC \& model response class summary}{fig:frac_response_class_model-vs-kc}
+\mycaptionof{figure}{KC \& model response class summary}{%
 % TODO delete (that other fig may not be presented now, at least not maybe till supplement)
 %Similar to \cref{fig:frac_response_class_kc-orn}, but now on a log scale. KC data is same for both.
 Response classes grouped by whether they are mix-responsive and their number of component responses, ignoring which component had the maximal response.
-\end{figure}
+}
+\label{fig:frac_response_class_model-vs-kc}
+\end{longcapfigure}
 
 \iffalse
 \subsection{Comparing model and measured KC response intensity}
 % TODO TODO keep? move to supplement?
 %
 % Model vs KC intensity in weak binaries
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[width=\textwidth]{intensity_diag-binaries_model-vs-kcs}
-\captionbacktorefs{KC and model average responses to binary mixtures of weakly-activating odors}{fig:intensity_diag-binaries_model-vs-kcs}
+\mycaptionof{figure}{KC and model average responses to binary mixtures of weakly-activating odors}{%
 % TODO say more?
 % TODO also refer to either methods or first KC-only figure for description of top statistics
 KC response calling (for right panel), is as described in \cref{fig:clust_diag-binaries}.
-\end{figure}
+}
+\label{fig:intensity_diag-binaries_model-vs-kcs}
+\end{longcapfigure}
 \fi
 
 % nvm, farn also activates VM5v reasonably (just a bit less than DC3) and that is (not nothing) but towards the lower side of # synapses per glomerulus
@@ -3715,52 +4085,60 @@ KC response calling (for right panel), is as described in \cref{fig:clust_diag-b
 \iffalse
 % Mix suppression dists and means for weak binaries (model vs KCs)
 % {
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[height=0.85\textheight]{mixsupp_dists_diag-binaries_model-vs-kcs_no-logistic}
 % TODO TODO be consistent about "weakly-activating" vs "weakly activating"
 % TODO TODO also be consistent about "logistic-scaled" vs "logistic scaled"
-\captionbacktorefs{Distributions of KC and model mixture suppression to binary mixtures of weakly-activating odors}{fig:mixsupp_dists_diag-binaries}
+\mycaptionof{figure}{Distributions of KC and model mixture suppression to binary mixtures of weakly-activating odors}{%
 % TODO \NSpikes here?
 Model KC mixture suppression computed on raw spike counts.\\
 KC distributions replotted from \cref{fig:mixsupp_dists_diag-binaries_kc-only}.
 % TODO delete?
 Each row is one of the three mixtures of weakly-activating odors, with the odor pair in the label on the left.
-\end{figure}
-\begin{figure}
+}
+\label{fig:mixsupp_dists_diag-binaries}
+\end{longcapfigure}
+\begin{longcapfigure}
 \centering
 \includegraphics[height=3in]{mixsupp-avg_model-logistic-scaled_vs_kc-model_diag-binaries}
-\captionbacktorefs{Mean mixture suppression across models and KCs for weak binary mixtures}{fig:mixsupp-avg_model-logistic-scaled_vs_kc-model_diag-binaries}
+\mycaptionof{figure}{Mean mixture suppression across models and KCs for weak binary mixtures}{%
 For the model data, mixture suppression was computed on logistic scaled \NSpikes.
 For KCs, the computation is as before.
-\end{figure}
+}
+\label{fig:mixsupp-avg_model-logistic-scaled_vs_kc-model_diag-binaries}
+\end{longcapfigure}
 % }
 \fi
 
 % Mix suppression dists and means for mix A/B (model vs KCs)
 % {
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[width=\textwidth]{mixsupp_dists_kiwi-control_model-vs-kcs_no-logistic}
 % TODO change caption label here?
-\captionbacktorefs{Distributions of KC and model mixture suppression}{fig:mixsupp_dists_kiwi-control_model-vs-kcs}
+\mycaptionof{figure}{Distributions of KC and model mixture suppression}{%
 % TODO NSpikes instead?
 Model mixture suppression computed on raw spike counts (\NSpikes).\\
 KC distributions replotted from \cref{fig:mixsupp_dists_kc-orn}.\\~\\
 Plots with each dataset (either the KCs or the model KCs) were made so that a fixed horizontal scale contained most of the data (across mixtures), and then the plots were aligned to place 0 in the same horizontal position. Note how all panels share one magenta and one black horizontal scale.\\~\\
 All five-component distributions show mixture suppression (via the left-shift).
 Unlike the KCs, the model has distributions roughly centered around 0 for both of the binary mixtures.
-\end{figure}
+}
+\label{fig:mixsupp_dists_kiwi-control_model-vs-kcs}
+\end{longcapfigure}
 
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[height=4in]{mixsupp-avg_model-logistic-scaled_vs_kc-orn}
-\captionbacktorefs{Mean mixture suppression across ORNs, model, and KCs}{fig:mixsupp-avg_model-logistic-scaled_vs_kc-orn}
+\mycaptionof{figure}{Mean mixture suppression across ORNs, model, and KCs}{%
 % TODO get this link to work, without showing meaningless page number (or what even is it?)?
 %For the model data, mixture suppression is computed on logistic-scaled \NSpikes{ }(see Methods \ref{sssec:scaling_spike_counts}).
 For the model data, mixture suppression is computed on logistic-scaled \NSpikes{ }(see Methods).
 For ORNs \& KCs, the computations are as before.
-\end{figure}
+}
+\label{fig:mixsupp-avg_model-logistic-scaled_vs_kc-orn}
+\end{longcapfigure}
 % }
 
 % TODO add note about how different ORN response amplitude distribution might affect things? still would expect to pretty much be 0... although it's ~-0.2 in binary (kiwi case only, and it does appear real)
@@ -3866,7 +4244,7 @@ It is unclear why prior KC experiments did not see clear signs of mixture suppre
 %On balance, I think this is unlikely.
 
 Despite how many mix-responsive glomeruli we observed (\cref{fig:frac_response_class_kc-orn}), it is quite surprising that we saw far fewer mix-responsive KCs.
-For all mixtures, the total KC mix-responsive population was between 2.6--3.6\%, which was lower than the highest fraction of component-selective cells in each mixture's components (\cref{table:kc_resp_types}).
+For all mixtures, the total KC mix-responsive population was between \qtyrange{2.6}{3.6}{\percent}, which was lower than the highest fraction of component-selective cells in each mixture's components (\cref{table:kc_resp_types}).
 %For most mixtures (except binary mix B), there is more than one component with more selective responders than the total mix-responsive fraction.
 What features distinguish the ORN representations of the mixtures versus the components, such that the mixture responses that were so prominent in the ORN layer can be so effectively reduced in the share of KCs they activate?
 It is possible that there is a slight increase in the breadth of the ORN responses evoked by the mixtures, and that this increased breadth is ultimately driving the APL much more effectively than any of the components (i.e. non-linearly).
@@ -3876,7 +4254,7 @@ Using a manipulation like APL>\ShibireTsShort, as in \textcite{Lin2014}, we coul
 One reason to question the strong mixture suppression we saw, especially in our five-component data, are existing recordings of KCs responding to natural mixtures.
 As natural odors are complex blends of many components, you might expect there to be strong mixture suppression to these stimuli, especially if you extrapolate from the weaker binary mixture suppression to the strong five-component mixture suppression that we observed.
 In \textcite{Honegger2011}, they include yeast, vinegar, orange, and mango, in addition to their strong monomolecular stimuli, and although they still only sample at most \textasciitilde6\% of the KCs, we do not have a particular reason to suspect their sampling is biased.
-These stimuli are among the more activating that they present, all activating \textasciitilde6-8\% of their KCs, with several of their monomolecular stimuli activating only \textasciitilde5\%.
+These stimuli are among the more activating that they present, all activating \textasciitilde\qtyrange{6}{8}{\percent} of their KCs, with several of their monomolecular stimuli activating only \textasciitilde5\%.
 This is consistent with some preliminary data in our lab, where responses to several natural stimuli (including kiwi, banana, wine, and apple cider vinegar) were also strongly activating in the KCs (data not shown).
 In this context, it is particularly confusing why our five-component mixtures showed such strong mixture suppression, but it does not seem that it is because of an order effect, as some pilot experiments presented the stimuli in the reverse order without a clear change in behavior (data not shown).
 %We also have at least one KC dataset collected independently, although not without its own issues, also exhibited the same general mixture suppression (data not shown).
@@ -3938,14 +4316,14 @@ Odors were delivered using an olfactometer as previously described in \autoref{c
 The odors were presented in a fixed order (same as in \cref{fig:orn_mean_responses}) from least to most activating, with the mixture presented after the components.
 For the ORN data that captured the binary mixtures in the same recording as the five-component mixtures, the binary mixture was presented just before the five-component mixture.
 For binary mixture experiments that included dilutions of the binary mixtures, they were presented from most to least dilute.
-Each odor was presented for 3 consecutive trials, each with 7s of baseline, a 3s odor pulse, and 20s before the start of the next trial's baseline.
+Each odor was presented for 3 consecutive trials, each with \qty{7}{\second} of baseline, a \qty{3}{\second} odor pulse, and \qty{20}{\second} before the start of the next trial's baseline.
 
-Presentation of the diagnostic odors used a shorter 7s post-stimulus delay, to save time.
+Presentation of the diagnostic odors used a shorter \qty{7}{\second} post-stimulus delay, to save time.
 Diagnostics were all presented first (for ORN recordings), and if a fly was moving too much or did not respond to any diagnostics, I did not continue to the collection of the experimental odors.
 After diagnostics, I would try to alternate whether I started with mix A or mix B.
 
 \subsection{Experimental animals}
-Flies for ORN recordings were females aged 4--10 days post-eclosion, with the same genetics and rearing as in \autoref{chap:remypaper}.
+Flies for ORN recordings were females aged \numrange{4}{10} days post-eclosion, with the same genetics and rearing as in \autoref{chap:remypaper}.
 
 Flies for KC recordings of mix A \& B had the same genetics and handling as described in \autoref{chap:remypaper}.
 
@@ -3956,7 +4334,7 @@ UAS-nls-mCherry/+; MB247db-LexA, LexAop-nls-GCaMP6s/TM6B; OK107-Gal4/+ (both ref
 I also included data from flies with the genotype tubP-FRT-Gal80-FRT; NP2431-Gal4, GH146-Flp/tubPGal80ts,UAS-TeTx-inactive; LexAop-nls-GCaMP6s/UAS-GFP (referred to as ``TNTin'' below), which had 6 flies with the APL labeled (inactive TeTx expressed) and 2 flies without the APL labeled (no inactive TeTx expressed).
 All flies in this KC dataset were raised at \qty{18}{\degreeCelsius} with experiments done at room temperature.
 
-\begin{table}[hbt!]
+\begin{longcaptable}
 \centering
 \begin{tabular}{ccc}
 Nickname & Rearing protocol\\
@@ -3965,13 +4343,14 @@ WT & kept at \qty{18}{\degreeCelsius} until experiment\\
 TNTin & placed at \textasciitilde\qty{30}{\degreeCelsius} for \textasciitilde3 days before experiment\\
 \hline
 \end{tabular}
-\captionbacktorefs{Rearing for KC flies in the binary mixtures of weakly-activating odors dataset}{table:yang_rearing}
+\mycaptionof{table}{Rearing for KC flies in the binary mixtures of weakly-activating odors dataset}{}
+\label{table:yang_rearing}
 \index{tables}
-\end{table}
+\end{longcaptable}
 
 \subsection{Two-photon calcium imaging of neural responses}
 
-\begin{table}[hbt!]
+\begin{longcaptable}
 \centering
 \begin{tabularx}{\textwidth} {
  % TODO how to get bottom vertical alignment (at least for header)?
@@ -4017,9 +4396,10 @@ ORNs & 2,5 & A,B & 9 & \num{371} & - & T.O.\\
 & 2 & \makecell{weak\\binaries} & 12 & \num{20442} & - & Y.Z.\\
 \hline
 \end{tabularx}
-\captionbacktorefs{Sample sizes for imaging datasets}{table:sample_sizes}
+\mycaptionof{table}{Sample sizes for imaging datasets}{}
+\label{table:sample_sizes}
 \index{tables}
-\end{table}
+\end{longcaptable}
 
 \footnotetext[1]{Only applicable if certain clusters of Suite2p ROIs were excluded from analysis (``total ROIs'' still used as denominator when reporting fractions/percentages of total population). See Methods for exclusion criteria.}
 
@@ -4027,11 +4407,11 @@ ORNs & 2,5 & A,B & 9 & \num{371} & - & T.O.\\
 %\subsubsection{Stimulus delivery}
 
 \subsubsection{ORNs}
-Laser power was measured at the start of each experimental day, and was kept within 0.5mW of 12mW.
-Flies were imaged volumetrically with a galvo-galvo scanner and a piezo controlling the objective $z$-position, with each plane containing 192x192 pixels covering a square FOV between 95.6--106.2$\um^{2}$.
-I used the minimum number of planes required to span the $z$-extent of the AL, with all flies needing only either 9 or 10 planes (spaced 10\um{ }apart), with one flyback frame.
-The imaging parameters above led to volumetric sampling rates of either 0.33Hz (for 10 planes) or 0.37Hz (for 9 planes), so we only sample the volume every 2.7--3s.
-This means that the responses calculated below (with a window of two volumes) will contain the 3s odor pulse and the one volume collected after that.
+Laser power was measured at the start of each experimental day, and was kept within \qty{0.5}{\milli\watt} of \qty{12}{\milli\watt}.
+Flies were imaged volumetrically with a galvo-galvo scanner and a piezo controlling the objective $z$-position, with each plane containing 192x192 pixels covering a square FOV between \qtyrange{95.6}{106.2}{\micro\metre\squared}.
+I used the minimum number of planes required to span the $z$-extent of the AL, with all flies needing only either 9 or 10 planes (spaced \qty{10}{\micro\metre} apart), with one flyback frame.
+The imaging parameters above led to volumetric sampling rates of either \qty{0.33}{\hertz} (for 10 planes) or \qty{0.37}{\hertz} (for 9 planes), so we only sample the volume every \qtyrange{2.7}{3}{\second}.
+This means that the responses calculated below (with a window of two volumes) will contain the \qty{3}{\second} odor pulse and the one volume collected after that.
 
 \subsubsection{KCs}
 % TODO TODO can i redefine \paragraph so it isn't inline with text (and maybe formatted something other than bold?)
@@ -4041,9 +4421,9 @@ This KC data was collected as in \autoref{chap:remypaper}, but using the same tr
 This KC dataset was collected by Jie-Yoon (Remy) Yang (R.Y.).
 
 \paragraph{Weak binaries}
-Laser power was kept at \textasciitilde10mW.
-Volumetric imaging with 2\um/step for 18 $z$-steps (0--34\um) and 2 flyback frames, with a single-plane frame rate of 68.47fps.
-These experiments had an odor pulse of 2s, an inter-odor interval of 45s, and an additional 5s baseline before the first odor presentation.
+Laser power was kept at \textasciitilde\qty{10}{\milli\watt}.
+Volumetric imaging with \qty{2}{\micro\metre}/step for 18 $z$-steps (\qtyrange{0}{34}{\micro\metre}) and 2 flyback frames, with a single-plane frame rate of 68.47fps.
+These experiments had an odor pulse of \qty{2}{\second}, an inter-odor interval of \qty{45}{\second}, and an additional \qty{5}{\second} baseline before the first odor presentation.
 % TODO what does she mean by block?
 %Odors were presented in 6 blocks, with each component and mixture presented once in each block, with each block having a separately randomized stimulus order.
 Odors were presented in a separate block for each of the 6 trials (in contrast to 3 trials for other experiments in this chapter), with each component and mixture presented once in each block, and the stimulus order independently-randomized within each block.
@@ -4055,7 +4435,7 @@ This KC dataset was collected by Yang Zheng (Y.Z.).
 \subsubsection{ORNs}
 As in \autoref{chap:remypaper}, the same panel of 24 ``diagnostic'' odors was used to assist in identifying and segmenting glomeruli.
 The only difference from the previous chapter's ORN analysis is that glomerulus responses are calculated as the maximum (or minimum, whichever has a greater absolute value) response within the 2 volume response window, rather than the mean across the same window.
-\DeltaFOverF\,is calculated for each glomerulus before computing this new peak response statistic, and that was also true before computing the mean response in our previous approach, with a baseline ($F_0$) defined as the mean response from the start of the trial to odor onset (a total of 7s).
+\DeltaFOverF\,is calculated for each glomerulus before computing this new peak response statistic, and that was also true before computing the mean response in our previous approach, with a baseline ($F_0$) defined as the mean response from the start of the trial to odor onset (a total of \qty{7}{\second}).
 
 \subsubsection{KCs}
 \paragraph{Mix A and B}
@@ -4068,9 +4448,9 @@ This reference odor KC data was taken from the first odor panel in \autoref{chap
 
 \paragraph{Weak binaries}
 Recordings are volumetrically motion-corrected with CaImAn, and then segmentation of individual KC nuclei uses Suite2p with manual curation to drop non-cell ROIs.
-This analysis produces between \num{1600}--\num{2400} KC ROIs per fly, with the possibility that some KCs may be double counted in ROIs across different planes.
+This analysis produces between \numrange{1600}{2400} KC ROIs per fly, with the possibility that some KCs may be double counted in ROIs across different planes.
 For each KC, the response calculation starts by subtracting estimated neuropil fluorescence from total fluorescence (via Suite2p), and then \textit{Z}-scoring the entire time trace.
-Responses are then defined by averaging this \textit{Z}-scored response during the 2--8s post odor onset (onset at 0s) and subtracting the mean in the 5s baseline before each stimulus onset.
+Responses are then defined by averaging this \textit{Z}-scored response during the \qtyrange{2}{8}{\second} post odor onset (onset at \qty{0}{\second}) and subtracting the mean in the \qty{5}{\second} baseline before each stimulus onset.
 
 For any thresholding to determine responses, this data was provided to me with pre-existing response calls by Y.Z., where cells had to pass a \KCRespStat{ }threshold of 1.0 for $\geq\text{4/6}$ trials.
 
@@ -4139,16 +4519,10 @@ Although we had tuned to a target response rate of \textasciitilde10\% of this r
 % TODO TODO TODO why this not showing? (oh, is order just screwed up b/c this is the only thing using H (and i suppose since everything was doing that in remypaper section, i didn't notice, but maybe page numbers in "List of Illustrations" were still incorrect there?)?
 % alternative to H, if that was the issue?
 % (it currently gets put on a page between figs 1.4 and 1.5 [it is 1.34] *overlapping* w/ other stuff)
-\begin{figure}[H]
+\begin{longcapfigure}
 \centering
 \includegraphics[height=0.9\textheight]{models-with-params_sorted-by-mean-mixsupp}
-\captionbacktorefs{Model parameters sorted by mean mix A \& B mixture suppression}{fig:models-with-params_sorted-by-mean-mixsupp}
-(captions on next page)
-\end{figure}
-\begin{figure}[H]
-\ContinuedFloat
-% NOTE: do need the empty square brackets here, to keep this out of ToC
-\caption[]{(continued)}
+\mycaptionof{figure}{Model parameters sorted by mean mix A \& B mixture suppression}{%
 % TODO also change so NaN gray values are replaced with the most appropriate True/False value (at least for A/B [pn_claw_to_apl/allow_net_claw_inhibition]. F=claw_dynamics can stay NaN in relevant cases)? care?
 Rightmost column (H) is mean mixture suppression (within mix A \& B, both 2 \& 5-components, although the larger 5-component values dominate), and all model variants are sorted by this value.\\~\\
 % TODO move some or all of below text into methods text, and then link to this fig?
@@ -4159,7 +4533,9 @@ Like model 5, model 15 does also take advantage of the discrete-claw specific pa
 Model 15 still has a significantly higher mean mixture suppression than the models with the most suppression in either the ``nonclaw'' or ``uniform'' cases (models 39 and 54, respectively).
 I expect that most mixture suppression effects would remain if the model 15 were used in place of model 5.\\~\\
 None of the ``bouton'' models, which have separate bouton units and \APLBouton weights (also from the hemibrain connectome), outperformed any of the ``claw'' models enough to justify the additional complexity.
-\end{figure}
+}
+\label{fig:models-with-params_sorted-by-mean-mixsupp}
+\end{longcapfigure}
 % }
 
 % TODO delete clearpage here? was this causing above float to not be processed in processdelayedfloats call?
@@ -4172,16 +4548,16 @@ None of the ``bouton'' models, which have separate bouton units and \APLBouton w
 Skeletons and synapses of right-hemisphere KCs that received olfactory PN inputs, the PNs that contacted those KCs, and the right anterior paired lateral (APL) neuron were obtained from the hemibrain connectome (v1.2.1; neuPrint; NAVis).
 After skeleton healing (rejoining cuts introduced by skeletonization of the segmented volume), each arbor was restricted to the right MB calyx by retaining the portion that lay outside a custom exclusion mesh covering non-calyx compartments.
 KCs were restricted with one mesh, while the PNs and APL were restricted with a revised version of that mesh.
-Synaptic connectors on these calyx arbors were then grouped into anatomical units using geodesic distance along the skeleton, computed in hemibrain raw coordinates (8nm per voxel).
-Isolated synapses whose mean geodesic distance to their ten nearest neighbors was 6.0\um or greater were discarded as stragglers.
-The remaining synapses were clustered by treating pairs within 6.8\um as connected and taking the connected components of this graph.
+Synaptic connectors on these calyx arbors were then grouped into anatomical units using geodesic distance along the skeleton, computed in hemibrain raw coordinates (\qty{8}{\nano\metre} per voxel).
+Isolated synapses whose mean geodesic distance to their ten nearest neighbors was \qty{6.0}{\micro\metre} or greater were discarded as stragglers.
+The remaining synapses were clustered by treating pairs within \qty{6.8}{\micro\metre} as connected and taking the connected components of this graph.
 % TODO what was this cap (or were these caps?)? (oh, discussed in next paragraph?)
 % TOOD what minimum size?
 Clusters that exceeded a cell-type-specific synapse cap were further split by constructing a $k$-nearest-neighbor minimum spanning tree and iteratively cutting an edge, provided that both resulting components remained above a minimum size.
 
-For KC claws, oversized clusters were split at a target cap of 40 synapses (minimum size 6), after which assignments were refined using PN identity: (a) claws contacted by more than one PN were split so that each claw received input from a single presynaptic partner; (b) unassigned PN synapses were absorbed into that PN's existing claw on the same KC, or used to seed a new claw if they comprised more than five contacts; and (c) corrected labels were propagated to nearby unlabeled synapses within 12.8\um.
+For KC claws, oversized clusters were split at a target cap of 40 synapses (minimum size 6), after which assignments were refined using PN identity: (a) claws contacted by more than one PN were split so that each claw received input from a single presynaptic partner; (b) unassigned PN synapses were absorbed into that PN's existing claw on the same KC, or used to seed a new claw if they comprised more than five contacts; and (c) corrected labels were propagated to nearby unlabeled synapses within \qty{12.8}{\micro\metre}.
 The number of claws per KC was defined as the number of these corrected clusters with at least five synapses.
-PN boutons were segmented without this minimum-spanning-tree splitting step, using a tighter isolation threshold (mean distance to the five nearest neighbors below 2.8\um) and a 4.8\um clustering cutoff.
+PN boutons were segmented without this minimum-spanning-tree splitting step, using a tighter isolation threshold (mean distance to the five nearest neighbors below \qty{2.8}{\micro\metre}) and a \qty{4.8}{\micro\metre} clustering cutoff.
 APL calyx arbors were segmented with the same geodesic procedure as KCs but with a larger target cap of 50 synapses and a minimum split size of 10. 
 %The resulting clusters are referred to as anatomical units.
 
@@ -4239,7 +4615,7 @@ The ``normalized'' model mean response starts with the logistic-scaled spike cou
 % TODO include vapor pressures for all i can? (+ pubchem links?)
 % TODO TODO add CIDs here too (but how to get it to not apply to mix rows?) can i easily?
 % use multirow inside table?
-\begin{table}[hbt!]
+\begin{longcaptable}
 \centering
 % anything less than 2.8cm (checked down to 2.75cm) currently splits "methyl salicylate" awkwardly
 \begin{tabular}{p{1.1cm}p{2.8cm}p{1.25cm}p{1.35cm}RZ}
@@ -4291,11 +4667,13 @@ The ``normalized'' model mean response starts with the logistic-scaled spike cou
 \hline
 \end{tabular}
 % TODO rename (back to "Odor abbreviations"?) if i end up including megamat/etc odors here (i prob won't)
-\captionbacktorefs{Mixes and their components}{table:mix_odors}
+\mycaptionof{table}{Mixes and their components}{%
 All of these odors use paraffin oil as their solvent.
 % TODO TODO add note about how the weak-binaries component concentrations differ from those in diagnostic panel
+}
+\label{table:mix_odors}
 \index{tables}
-\end{table}
+\end{longcaptable}
 % TODO delete either this or duplicate below? can i omit the actual text on the second one?
 \footnotetext[1]{In-vial v/v concentration.}
 % TODO be consistent about whether to end these in periods or not
@@ -4305,10 +4683,10 @@ All of these odors use paraffin oil as their solvent.
 \footnotetext[3]{5/12 flies had farnesol at -2.5 as well as -3 (and all mixtures with both). -2.5 data included too.}
 \endgroup
 
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[height=0.68\textheight]{orn_responses_stddev_and_n}
-\captionbacktorefs{ORN response standard deviation and per glomerulus fly counts}{fig:orn_stddev_and_n}
+\mycaptionof{figure}{ORN response standard deviation and per glomerulus fly counts}{%
 Standard deviation (across flies) for the responses shown in \cref{fig:orn_mean_responses}.
 The color scale is the same as the positive side of the color scale in that mean response plot.
 The leftmost column contains the \# of flies in which each glomerulus is
@@ -4316,9 +4694,11 @@ identified, or white for those not identified in any flies.
 % TODO move to text?
 The vast majority of glomeruli respond relatively consistently across flies, to the majority of odors.
 Most odors have reasonably consistent responses across flies, and most glomeruli were identified in all 9 flies, with the least sampled glomerulus analyzed still identified in 5 flies.
-The flies have 38--42 glomeruli identified, with a mean of 41.2.
+The flies have \numrange{38}{42} glomeruli identified, with a mean of 41.2.
 A small number of glomeruli identified in less than half of the flies were excluded from analysis
-\end{figure}
+}
+\label{fig:orn_stddev_and_n}
+\end{longcapfigure}
 
 % TODO TODO edit to delete uniform model (or just keep out)
 % TODO figure out what i want to do with this. add back some version of (maybe count version of) mix vs top component plot?
@@ -4340,10 +4720,10 @@ A small number of glomeruli identified in less than half of the flies were exclu
 
 % Model vs KC intensity (mix A/B)
 % {
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[height=0.7\textheight]{intensity_model-vs-kcs_logistic-scaled_5comp}
-\captionbacktorefs{KC and model average responses to five-component mixtures}{fig:intensity_model-kc_5comp}
+\mycaptionof{figure}{KC and model average responses to five-component mixtures}{%
 Left: response strength separately normalized both in KC (\KCRespStat) and model (logistic-scaled spike counts) data.
 % TODO link specific part of methods (/delete)
 See Methods for normalization details.
@@ -4352,32 +4732,40 @@ Right: raw mean response rates to each odor.
 See Methods for how response rates are defined.\\~\\
 Note that mismatches for EtOH, IaA, fur seem to follow from weaker ORN responses to these odors (\cref{fig:intensity_orn-vs-kc}).
 The model may slightly improve on the ORN intensity mismatch for 1o3ol (and perhaps slightly for IaA), but it also seems to overpredict the relative responsiveness to eb.
-\end{figure}
+}
+\label{fig:intensity_model-kc_5comp}
+\end{longcapfigure}
 
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[height=0.7\textheight]{intensity_model-vs-kcs_logistic-scaled_binary}
-\captionbacktorefs{KC and model average responses to binary mixtures}{fig:intensity_model-kc_binary}
+\mycaptionof{figure}{KC and model average responses to binary mixtures}{%
 See \cref{fig:intensity_model-kc_5comp} for details.
-\end{figure}
+}
+\label{fig:intensity_model-kc_binary}
+\end{longcapfigure}
 % }
 
 % TODO refer to these (/delete?)? at least in caption of plot that also has ORN response classes?
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[height=0.85\textheight]{response-class-means_orn_binary}
-\captionbacktorefs{ORN 2-component mix response class means and counts}{fig:response-class-means_orn_binary}
+\mycaptionof{figure}{ORN 2-component mix response class means and counts}{%
 Left: mean responses across all glomeruli within a response class.
 Right: counts of this response class, across glomeruli from all flies.
 Different colors in right panel bars correspond to different flies.
-\end{figure}
+}
+\label{fig:response-class-means_orn_binary}
+\end{longcapfigure}
 
-\begin{figure}
+\begin{longcapfigure}
 \centering
 \includegraphics[height=0.85\textheight]{response-class-means_orn_5comp}
-\captionbacktorefs{ORN 5-component mix response class means and counts}{fig:response-class-means_orn_5comp}
+\mycaptionof{figure}{ORN 5-component mix response class means and counts}{%
 As \cref{fig:response-class-means_orn_binary}, but for 5-component mixtures.
-\end{figure}
+}
+\label{fig:response-class-means_orn_5comp}
+\end{longcapfigure}
 
 % TODO TODO delete (or at least regenerate to only use claw model, not uniform)
 %
@@ -4474,7 +4862,7 @@ There is ongoing work in the lab to characterize the response of this neuron to 
 %See left side of \cref{fig:orn_mean_responses} for some example mean responses to these odors.
 
 % TODO delete? floatbox replace need for this? (prob not gonna use that)
-\begin{table}
+\begin{longcaptable}
 
 % TODO delete
 %\centering
@@ -4527,16 +4915,16 @@ fenchone & fench & -5 & VC1 & pfo & 82229\\
 % and how to get a table label for it? (since it seems to be an issue to use the begin/end table inside adjustbox)
 %\end{adjustbox}
 
-\captionbacktorefs{Diagnostic odors used to assist in identifying and segmenting glomeruli}{table:diagnostic_odors}
+\mycaptionof{table}{Diagnostic odors used to assist in identifying and segmenting glomeruli}{}
 % TODO also refer to full volume images if i include those? (in remypaper supplemental figures now. 2 pages)
 % TODO compare hyperlink's \autoref and cleveref \cref for this and tables?
 % TODO TODO need text below to actually be part of caption above for it to work w/ sidecap?
 %See \cref{fig:s1} for example volumetric responses to this full panel in one fly from \autoref{chap:remypaper}.
 %See left side of \cref{fig:orn_mean_responses} for some example mean responses to these odors.
-
+\label{table:diagnostic_odors}
 \index{tables}
 %}
-\end{table}
+\end{longcaptable}
 % TODO delete, if i end up using longtable for diagnostic odor table (leaning towards that)
 %\end{SCtable}
 % TODO mention we chose nearest log10 v/v dilution when picking mix B odor concentrations (for approximate intensity matching)?
