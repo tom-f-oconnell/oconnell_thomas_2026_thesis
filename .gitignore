@@ -1,0 +1,17 @@
+.env
+*.aux
+*.log
+*.bcf
+*.fdb_latexmk
+*.fff
+*.fls
+*.idx
+*.lof
+*.lot
+*.nlo
+*.run.xml
+*.toc
+*.bbl
+*.blg
+*.ilg
+*.ind
