@@ -11,10 +11,10 @@
 
 % Overleaf 28 Jan: Page geometry
 % TODO TODO TODO restore
-%\RequirePackage[letterpaper,top=1in,bottom=1in,left=1.5in,right=1.5in,headsep=\dimexpr 0.25in-1em,marginparwidth=1.25in]{geometry}
+\RequirePackage[letterpaper,top=1in,bottom=1in,left=1.5in,right=1.5in,headsep=\dimexpr 0.25in-1em,marginparwidth=1.25in]{geometry}
 % TODO TODO TODO delete. for debugging. any way to accomplish this w/o changing this .cls file?
 % https://tex.stackexchange.com/questions/554418/how-to-resolve-general-package-clash-in-latex
-\RequirePackage[showframe,letterpaper,top=1in,bottom=1in,left=1.5in,right=1.5in,headsep=\dimexpr 0.25in-1em,marginparwidth=1.25in]{geometry}
+%\RequirePackage[showframe,letterpaper,top=1in,bottom=1in,left=1.5in,right=1.5in,headsep=\dimexpr 0.25in-1em,marginparwidth=1.25in]{geometry}
 
 % Page style
 \makeoddhead{headings}{}{}{\thepage}

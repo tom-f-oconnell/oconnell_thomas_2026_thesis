@@ -63,14 +63,6 @@
 % NOTE: with these options, it will use separator for anything >9999
 \usepackage[group-separator={,}]{siunitx}
 
-\sisetup{range-phrase=--, range-units=single}
-% per-mode=symbol: e.g. \qty{2}{\litre\per\minute} -> "2 L/min" (rather than "2 L min^-1")
-% product-units=single: e.g. \qtyproduct{150 x 150}{\micro\metre} -> "150 x 150 um" (rather than "150 um x 150 um")
-\sisetup{per-mode=symbol, product-units=single}
-% not SI units, so not predefined by siunitx
-\DeclareSIUnit\molar{M}
-\DeclareSIUnit\osmole{Osm}
-
 % for concentration notation square brackets
 % https://tex.stackexchange.com/questions/407195/
 \usepackage[version=4]{mhchem}
@@ -486,6 +478,66 @@
        % TODO revert? at least now i can tell what is a subsubsection vs a subsection...
        {\normalfont\normalsize\bfseries\itshape}}
 \makeatother
+
+% detect-[weight|family] so siunitx output follows building in table header too (claude)
+% per-mode=symbol: e.g. \qty{2}{\litre\per\minute} -> "2 L/min" (rather than "2 L min^-1")
+% product-units=single: e.g. \qtyproduct{150 x 150}{\micro\metre} -> "150 x 150 um" (rather than "150 um x 150 um")
+\sisetup{range-phrase=--, range-units=single, detect-weight=true, detect-family=true, per-mode=symbol, product-units=single}
+% not SI units, so not predefined by siunitx
+\DeclareSIUnit\molar{M}
+\DeclareSIUnit\osmole{Osm}
+
+% Auto-bold table headers: every cell before the first \midrule
+% (from the start of the table, or from \toprule if present).
+% Tables with no \midrule are left alone. Needs a second compile.
+\makeatletter
+\newif\if@tblhead
+\newif\if@tblmidseen
+\newcount\tbl@count
+\newcommand*{\tableheadfont}{\bfseries\ifmmode\else\boldmath\fi}
+\protected\def\tbl@headcell{\if@tblhead\tableheadfont\fi}
+\pretocmd{\insert@column}{\tbl@headcell}{}{\PackageWarning{tblhead}{Could not patch \string\insert@column}}
+
+% .aux bookkeeping: which tables (numbered in source order) have a \midrule
+\def\tbl@hasmid#1{\global\@namedef{tbl@mid@#1}{}}
+\AtBeginDocument{\immediate\write\@auxout{\string\providecommand\string\tbl@hasmid[1]{}}}
+
+\def\tbl@begin{%
+  \aftergroup\global% after this table ends, restore the outer table's state
+  \if@tblhead\aftergroup\@tblheadtrue\else\aftergroup\@tblheadfalse\fi
+  \global\advance\tbl@count\@ne
+  \edef\tbl@this{\the\tbl@count}%
+  \tbl@arm}
+\def\tbl@arm{% (re)start header state; tabularx calls this once per trial pass
+  \global\@tblmidseenfalse
+  \ifcsname tbl@mid@\tbl@this\endcsname\global\@tblheadtrue\fi}% else: inherit (bold if nested in a header)
+\def\tbl@midrule{%
+  \global\@tblheadfalse
+  \if@tblmidseen\else
+    \global\@tblmidseentrue
+    \immediate\write\@auxout{\string\tbl@hasmid{\tbl@this}}%
+  \fi}
+\pretocmd{\midrule}{\noalign{\tbl@midrule}}{}{}
+\apptocmd{\toprule}{\noalign{\global\@tblheadtrue}}{}{}
+
+% tabularx typesets its body several times; re-arm before each pass
+\pretocmd{\TX@trial}{\tbl@arm}{}{\PackageWarning{tblhead}{Could not patch tabularx}}
+\patchcmd{\TX@endtabularx}{\csname tabular*}{\tbl@arm\csname tabular*}{}{\PackageWarning{tblhead}{Could not patch tabularx}}
+
+\@for\tbl@env:={tabular,tabular*,tabularx,longtable}\do{%
+  \AddToHook{env/\tbl@env/begin}{\tbl@begin}}
+\makeatother
+
+% TODO delete. this was claude's first attempt, which only worked for tables that had
+% an explicit \toprule
+%\makeatletter
+%\newif\if@tblhead
+%\newcommand*{\tableheadfont}{\bfseries\ifmmode\else\boldmath\fi}
+%\protected\def\tbl@headcell{\if@tblhead\tableheadfont\fi}
+%\pretocmd{\insert@column}{\tbl@headcell}{}{\PackageWarning{tblhead}{Could not patch \string\insert@column}}
+%\apptocmd{\toprule}{\noalign{\global\@tblheadtrue}}{}{}
+%\pretocmd{\midrule}{\noalign{\global\@tblheadfalse}}{}{}
+%\makeatother
 % }
 
 % Definition of \graphicspath and customization (could be shortened)
@@ -1150,8 +1202,9 @@
 \newcommand{\um}{\ensuremath{\mu m}}
 
 \newcommand{\LogConcX}{\ensuremath{\log_{10} \ce{[x]}}}
+% TODO delete if auto bolding good
 % bold version (e.g. for table column headers)
-\newcommand{\LogConcXBold}{\ensuremath{\boldsymbol{\log_{10}} \textbf{\ce{[x]}}}}
+%\newcommand{\LogConcXBold}{\ensuremath{\boldsymbol{\log_{10}} \textbf{\ce{[x]}}}}
 
 % TODO do i actually want ensuremath for this one? maybe not? matter?
 \newcommand{\DeltaFOverF}{\ensuremath{\Delta\text{$F$/$F_0$}}}
@@ -1634,7 +1687,6 @@ We investigated how odor coding in the fly olfactory circuit balances these comp
 \mysubcaption{A}{%
 $t$-SNE embedding of 109 odors based on the patterns of activity they elicit across 24 fly ORs in the Hallem dataset.
 A subset (open gray symbols) spanning the odor space was selected for measurement in the MB.
-(continued on next page)
 }
 
 % TODO happy with this?
@@ -1651,6 +1703,7 @@ All glomeruli identified in each plane are shown collectively across the left tw
 Top: responses to three ``diagnostic'' odors, with the target glomerulus for each labeled in red.
 Bottom: responses to three example odors, with 1-pentanol and 1-hexanol exhibiting more similar responses than either does to the more structurally distant ethyl propionate.
 See \Crefwithbackref{fig:s1} for example volumetric responses to the full 24-odor diagnostic panel and identified ROIs, and \Crefwithbackref{fig:s2} for mean responses to this panel for all our individual ORN flies.
+See \Crefwithbackref{table:diagnostic_odors} for odors and concentrations.
 }
 
 \mysubcaption{D}{%
@@ -2659,7 +2712,7 @@ E.J.H. and T.O.S. supervised the project and acquired funding.
 \multirowthead{2}{\thead{$N_{flies}$}} \\ \cline{3-4}
 % TODO something other than "Structure"? "Population"? "Unit"?
   & & \thead{Region} & \thead{Structure} & \\
-\hline
+\midrule
 % TODO say soma layer or something other than "MB" (to distinguish from "MB calyx")?
 % TODO TODO add footnote or something for KC soma N, referring to my fig:s7?
 \multirow{5}{*}{1} & \makecell{pebbled-Gal4/+; +;\\20xUAS-IVS-syn21-OpGCaMP6f-p10/+} & AL & \makecell{ORN\\terminals} & 9 \\
@@ -2678,7 +2731,7 @@ E.J.H. and T.O.S. supervised the project and acquired funding.
 \multirow{2}{*}{2} & \makecell{pebbled-Gal4/+; +;\\20xUAS-IVS-syn21-OpGCaMP6f-p10/+} & AL & \makecell{ORN\\terminals} & 5 \\
 \cline{2-5}
  & \makecell{+; +; 20xUAS-nls-OpGCaMP6s-p10/+;\\OK107-Gal4/+} & MB & \makecell{KC\\somata} & 20 \\
-\hline
+\bottomrule
 \end{tabularx}
 \mycaptionof{table}{Sample sizes and genotypes for imaging datasets}{%
 With the exception of the KC soma datasets, and a small amount of the ORN terminal data, all flies were presented each odor in their respective panels.
@@ -2707,7 +2760,7 @@ For these cases where not all odors are presented in each fly, the $N_{flies}$ r
 % NOTE: the multicolumn{1}... is to exclude the header row from having the command behind
 % custom colcell col type applied to it (so CID doesn't get turned into a junk PubChem link, etc)
 % TODO or define some function that displays both CID with link, as well as structure (maybe with ` & ` separator between them). not sure there's a good way to do that w/ colcell... try (tried, first attempts didn't work)?
-\textbf{Name} & \textbf{Abbrev.} & \multicolumn{1}{l}{\textbf{CID}} & \multicolumn{1}{l}{\textbf{Catalog No.}} & \multicolumn{1}{c}{\textbf{Structure}} \\
+Name & Abbrev. & \multicolumn{1}{l}{CID} & \multicolumn{1}{l}{Catalog No.} & \multicolumn{1}{c}{Structure} \\
 \midrule
 1-pentanol & 1-5ol & 6276 & 138975 & 6276 \\
 1-hexanol & 1-6ol & 8103 & 471402 & 8103 \\
@@ -2763,7 +2816,7 @@ All compounds were purchased from Sigma-Aldrich.
 \toprule
 % TODO define this in a local header var, and re-use below?
 % any other way to only change caption, but share header in longtable?
-\textbf{Name} & \textbf{Abbrev.} & \LogConcXBold & \multicolumn{1}{c}{\textbf{CID}} & \multicolumn{1}{l}{$\text{\textbf{Catalog No.}}^{*}$} & \multicolumn{1}{l}{\textbf{MetaCyc ID}} & \multicolumn{1}{l}{\textbf{LOTUS ID}} & \multicolumn{1}{c}{\textbf{Structure}} \\
+Name & Abbrev. & \LogConcX & \multicolumn{1}{c}{CID} & \multicolumn{1}{l}{$\text{Catalog No.}^{*}$} & \multicolumn{1}{l}{MetaCyc ID} & \multicolumn{1}{l}{LOTUS ID} & \multicolumn{1}{c}{Structure} \\
 \midrule
 \endfirsthead
 
@@ -2773,7 +2826,7 @@ All compounds were purchased from Sigma-Aldrich.
 \toprule
 %
 % TODO is this appropriate use of asterisk? just omit? go back to some kind of footnote?
-\textbf{Name} & \textbf{Abbrev.} & \LogConcXBold & \multicolumn{1}{c}{\textbf{CID}} & \multicolumn{1}{l}{$\text{\textbf{Catalog No.}}^{*}$} & \multicolumn{1}{l}{\textbf{MetaCyc ID}} & \multicolumn{1}{l}{\textbf{LOTUS ID}} & \multicolumn{1}{c}{\textbf{Structure}} \\
+Name & Abbrev. & \LogConcX & \multicolumn{1}{c}{CID} & \multicolumn{1}{l}{$\text{Catalog No.}^{*}$} & \multicolumn{1}{l}{MetaCyc ID} & \multicolumn{1}{l}{LOTUS ID} & \multicolumn{1}{c}{Structure} \\
 \midrule
 \endhead
 
@@ -3450,9 +3503,10 @@ The remaining fraction of cells, in response classes other than non-responders o
 % TODO maybe add the vertical rules for this table? "|" characters in spec above
 \multirowthead{2}{\thead{\NComps}} &
 \multirowthead{2}{\thead{Response Type}} &
+% TODO any reason to use \cmidrule instead of \cline?
 \multicolumn{2}{c}{\thead{\% of ROIs}}\\ \cline{3-4}
   & & \thead{Mix A} & \thead{Mix B}\\
-\hline
+\midrule
 \multirow{4}{*}{5}
 & non-responding & 73.1\% & 76.6\%\\
 & component-selective & 18.6\% & 16.9\%\\
@@ -3464,7 +3518,7 @@ The remaining fraction of cells, in response classes other than non-responders o
 & component-selective & 8.8\% & 8.0\%\\
 & mix-responsive & 2.6\% & 3.6\%\\
 & mix-selective & 0.3\% & 0.5\%\\
-\hline
+\bottomrule
 \end{tabular}
 \mycaptionof{table}{KC response class percentages}{%
 The mix-responsive percentage includes the mix-selective cells, as well as those that also respond to components.
@@ -3712,7 +3766,7 @@ For the binary mixtures $A_2$ \& $B_2$, the model did a much worse job of predic
 \multirowthead{2}{\thead{Response Type}} &
 \multicolumn{2}{c}{\thead{\% of KCs}}\\ \cline{3-4}
   & & \thead{Observed} & \thead{Model}\\
-\hline
+\midrule
 \multirow{4}{*}{$A_5$}
 % TODO TODO easier way to change textcolor of whole row?
 & \textcolor{gray}{non-responding} & \textcolor{gray}{73.1\%} & \textcolor{gray}{83.2\%}\\
@@ -3727,7 +3781,7 @@ For the binary mixtures $A_2$ \& $B_2$, the model did a much worse job of predic
 & component-selective & 16.9\% & 8.7\%\\
 & mix-responsive & 3.1\% & 4.5\%\\
 & \textcolor{gray}{mix-selective} & \textcolor{gray}{1.7\%} & \textcolor{gray}{0.4\%}\\
-\hline
+\bottomrule
 \end{tabular}
 \mycaptionof{table}{Model vs KC five-component response type percentages}{}
 \label{table:model_vs_kc_resp_types_5comp}
@@ -4093,10 +4147,10 @@ All flies in this KC dataset were raised at \qty{18}{\degreeCelsius} with experi
 \centering
 \begin{tabular}{ccc}
 Nickname & Rearing protocol\\
-\hline
+\midrule
 WT & kept at \qty{18}{\degreeCelsius} until experiment\\
 TNTin & placed at \textasciitilde\qty{30}{\degreeCelsius} for \textasciitilde3 days before experiment\\
-\hline
+\bottomrule
 \end{tabular}
 \mycaptionof{table}{Rearing for KC flies in the binary mixtures of weakly-activating odors dataset}{}
 \label{table:yang_rearing}
@@ -4118,7 +4172,7 @@ TNTin & placed at \textasciitilde\qty{30}{\degreeCelsius} for \textasciitilde3 d
 }
 % TODO try changing ROIs to be two subcolumns of one ROIs, w/ subcolumns "Total" and "Filtered"?
 Cells & \NComps & Mix & Flies & Total ROIs & Filtered\footnotemark[1]{} ROIs & By\\
-\hline
+\midrule
 ORNs & 2,5 & A,B & 9 & \num{371} & - & T.O.\\
 \hdashline
 \multirow{5}{*}{KCs}
@@ -4131,7 +4185,7 @@ ORNs & 2,5 & A,B & 9 & \num{371} & - & T.O.\\
  & & B & 3 & \num{10885} & \num{8020} & \\
 \hdashline
 & 2 & \makecell{weak\\binaries} & 12 & \num{20442} & - & Y.Z.\\
-\hline
+\bottomrule
 \end{tabularx}
 \mycaptionof{table}{Sample sizes for imaging datasets}{}
 \label{table:sample_sizes}
@@ -4349,8 +4403,11 @@ The ``normalized'' model mean response starts with the logistic-scaled spike cou
 % anything less than 2.8cm (checked down to 2.75cm) currently splits "methyl salicylate" awkwardly
 \begin{tabular}{p{1.1cm}p{2.8cm}p{1.25cm}p{1.35cm}RZ}
 % TODO bold everything?
-\textbf{Mix} & \textbf{Name} & \textbf{Abbrev.} & \LogConcXBold\footnotemark[1]{} & \multicolumn{1}{l}{\textbf{CID}} & \multicolumn{1}{l}{\textbf{Structure}} \\
-\hline
+% TODO delete if auto bolding good
+%\textbf{Mix} & \textbf{Name} & \textbf{Abbrev.} & \LogConcXBold\footnotemark[1]{} & \multicolumn{1}{l}{\textbf{CID}} & \multicolumn{1}{l}{\textbf{Structure}} \\
+% TODO delete. auto bolding did not work
+Mix & Name & Abbrev. & \LogConcX\footnotemark[1]{} & \multicolumn{1}{l}{CID} & \multicolumn{1}{l}{Structure} \\
+\midrule
   & paraffin oil & pfo & & & \multicolumn{1}{c}{} \\
 \hline
 \multirow{6}{*}{A}
@@ -4392,7 +4449,7 @@ The ``normalized'' model mean response starts with the logistic-scaled spike cou
  & 2-heptanone & 2h & -7 & 8051 & 8051 \\
  & farnesol\footnotemark[3] & farn & -3 & 445070 & \multicolumn{1}{l}{\LoadChemFigTexFromCID[scale=0.73]{445070}} \\
  & methyl acetate & ma & -7 & 6584 & 6584 \\
-\hline
+\bottomrule
 \end{tabular}
 % TODO rename (back to "Odor abbreviations"?) if i end up including megamat/etc odors here (i prob won't)
 \mycaptionof{table}{Mixes and their components}{%
@@ -4591,7 +4648,7 @@ There is ongoing work in the lab to characterize the response of this neuron to 
 %
 % TODO link to DoOR for glomeruli? meh
 Common name & Abbreviation & \LogConcX\footnotemark[1]{} & Target glomerulus & Solvent & \multicolumn{1}{l}{CID}\\
-\hline
+\midrule
 3-methylthiopropanol & 3mtp & -5 & DM3 & pfo & 10448\\
 valeric acid & va & -4 & DM6 & water & 7991\\
 trans-2-hexenal & t2h & -6 & DL5 & pfo & 5281168\\
@@ -4616,7 +4673,7 @@ ethyl lactate & elac & -7 & VC4 & pfo & 7344\\
 1-hexanol & 6ol & -6 & VC3 & pfo & 8103\\
 phenylacetaldehyde & paa & -5 & VL2a & pfo & 998\\
 fenchone & fench & -5 & VC1 & pfo & 82229\\
-\hline
+\bottomrule
 \end{tabular}
 }
 % (before the caption, so the space for it is accounted for when checking whether the caption fits)
