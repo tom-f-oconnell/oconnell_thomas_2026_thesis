@@ -736,8 +736,10 @@
 % the fit check typesets an approximation of the caption into a box that is then discarded, so its
 % \label/\index/etc are disabled there (and links/anchors in a discarded box are never output).
 % if it doesn't fit w/ the usual space between figure/table and caption (caption skip=20pt, set above),
-% that space is shrunk (down to \my@capminskip) before giving up and moving the caption to the next page.
-% \my@capslack is extra room required beyond the measured height, to allow for measurement error.
+% that space is shrunk (down to \my@capminskip), and then other glue on the page (e.g. the space above
+% footnotes) is allowed to shrink (by up to \pageshrink, as TeX would anyway), before giving up and moving the
+% caption to the next page. \my@capslack is extra room required beyond the measured height, just as a small
+% margin for error (the measurement has matched the typeset height of the main captions exactly).
 %
 % any \mysubcaption calls (and their \label's) right after the \mycaptionof{...}\label{...} are collected
 % (into \my@subcaps) and measured along w/ it, so the panel captions also stay w/ the figure if they all fit.
@@ -747,11 +749,13 @@
 % NOTE: not done for the longtable version below, where the caption is the first row of the table.
 \newsavebox\my@capbox
 \newlength\my@capslack
-\setlength\my@capslack{4pt}
+\setlength\my@capslack{1pt}
 \newlength\my@capminskip
 \setlength\my@capminskip{6pt}
 \newlength\my@capneeds
 \newlength\my@caphas
+% \my@caphas plus how much the page's glue can shrink
+\newlength\my@caproom
 % number of panel captions (set by \my@measurecaption)
 \newcount\my@nsubcaps
 \newcount\my@subcapcount
@@ -797,14 +801,14 @@
   \endgroup
   \setlength\my@capneeds{\dimexpr\ht\my@capbox+\dp\my@capbox+\my@capslack\relax}%
   \global\setbox\my@capbox=\box\voidb@x}
-% for captions that don't all fit (in \my@caphas): counting down from \my@subcapbreak (initially the number of
+% for captions that don't all fit (in \my@caproom): counting down from \my@subcapbreak (initially the number of
 % panel captions), finds the most panel captions that fit along w/ the main caption, and sets \my@subcapbreak
 % to the number of the next one, or to 0 if not even the first one fits.
 \newcommand\my@findcapbreak[3]{%
   \ifnum\my@subcapbreak>\@ne
     \advance\my@subcapbreak\m@ne
     \my@measurecaption{#1}{#2}{#3}{\my@subcapbreak}%
-    \ifdim\dimexpr\my@capneeds+\my@capminskip\relax>\my@caphas
+    \ifdim\dimexpr\my@capneeds+\my@capminskip\relax>\my@caproom
       \def\my@next{\my@findcapbreak{#1}{#2}{#3}}%
     \else
       \advance\my@subcapbreak\@ne
@@ -826,9 +830,11 @@
   \my@measurecaption{#1}{#2}{#3}{\@M}%
   \ifdim\pagegoal<\maxdimen
     \setlength\my@caphas{\dimexpr\pagegoal-\pagetotal-\pagedepth\relax}%
+    \setlength\my@caproom{\dimexpr\my@caphas+\pageshrink\relax}%
     % search log for "mycaptionof fit" to see these numbers for each caption
-    \typeout{mycaptionof fit (#1 #2): needs \the\my@capneeds\space+ skip, has \the\my@caphas}%
-    \ifdim\dimexpr\my@capneeds+\my@capminskip\relax>\my@caphas
+    \typeout{mycaptionof fit (#1 #2): needs \the\my@capneeds\space+ skip, has \the\my@caphas\space
+      (+ \the\pageshrink\space shrink)}%
+    \ifdim\dimexpr\my@capneeds+\my@capminskip\relax>\my@caproom
       \my@subcapbreak=\my@nsubcaps
       \my@findcapbreak{#1}{#2}{#3}%
       \global\my@subcapbreak=\my@subcapbreak
@@ -841,9 +847,12 @@
       \fi
     \fi
     \ifdim\dimexpr\my@capneeds+\abovecaptionskip\relax>\my@caphas
-      \ifdim\dimexpr\my@capneeds+\my@capminskip\relax>\my@caphas\else
-        % use all the space that is left as the skip (between \my@capminskip and the usual skip)
-        \captionsetup{skip=\the\dimexpr\my@caphas-\my@capneeds\relax}%
+      \ifdim\dimexpr\my@capneeds+\my@capminskip\relax>\my@caproom\else
+        % use all the space that is left as the skip (between \my@capminskip and the usual skip). if even
+        % \my@capminskip doesn't fit, TeX shrinks the page's other glue to make room.
+        \setlength\@tempdima{\dimexpr\my@caphas-\my@capneeds\relax}%
+        \ifdim\@tempdima<\my@capminskip \setlength\@tempdima{\my@capminskip}\fi
+        \captionsetup{skip=\the\@tempdima}%
       \fi
     \fi
   \fi
