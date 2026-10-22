@@ -1309,6 +1309,17 @@
 % TODO TODO define this per table below too?
 \renewcommand*\printatom[1]{\tiny\ensuremath{\mathrm{#1}}}
 
+\newcommand{\LicenseText}{ is distributed under a ``Creative Commons Attribution-NonCommercial-ShareAlike License'' license}
+
+% https://tex.stackexchange.com/questions/30720/footnote-without-a-marker
+\newcommand\extrafootertext[1]{%
+    \bgroup
+    \renewcommand\thefootnote{\fnsymbol{footnote}}%
+    \renewcommand\thempfootnote{\fnsymbol{mpfootnote}}%
+    \footnotetext[0]{#1}%
+    \egroup
+}
+
 % for debugging package versions (wrt local install):
 % (will appear in log)
 \listfiles
@@ -1335,20 +1346,18 @@
 % not sure if i accidentally placed it after at some point, or what.
 \orcid{0000-0001-5107-7479}
 
-% TODO what's relationship between this and \unilogo above (which also is after logo actually appears)? can i move it right before this?
-% NOTE: this was previously after \orcid and \rightsstatement, but the logo appears earlier (so i moved it up here. cause issues?)
-\maketitle[logo]
-
 % was wanting to have this regardless of ifdraft, but the page this was on (bottom of second page) isn't even shown without
 % some stuff already in conditional (presumably \maketitle)
 %
 %% IMPORTANT: Select ONE of the rights statement below.
 % picking this one just so i don't screw anyone if a journal would want us to transfer copyright of the preprint portion
 % TODO maybe pick the second one, and license my natmix Chapter 3 (and glomerular diagnostic portion that won't be in preprint) under CC-NA-SA/whatever?
-\rightsstatement{All rights reserved}
+%\rightsstatement{All rights reserved}
 %
-% \rightsstatement{All rights reserved except where otherwise noted}
+\rightsstatement{All rights reserved except where otherwise noted}
 % \rightsstatement{Some rights reserved. This thesis is distributed under a [name license, e.g., ``Creative Commons Attribution-NonCommercial-ShareAlike License'']}
+
+\maketitle[logo]
 
 \begin{acknowledgements}
 
@@ -1489,6 +1498,7 @@ This mixture suppression does not seem to be inherited from the ORNs, where glom
 \chapter{General Introduction}
 \label{chap:intro}
 \begin{refsection}
+\extrafootertext{All material in this chapter\LicenseText{}.}
 
 Chemosensation is the most evolutionarily ancient sensory modality, yet much of the early olfactory circuitry is organized similarly across large phylogenetic distances, including between insects and vertebrates\cite{Wilson2013}.
 Although the neural circuitry is largely conserved and increasingly well understood, the full diversity of behaviorally relevant olfactory stimulus space remains poorly described, both for humans as well as most common model organisms.
@@ -1647,6 +1657,7 @@ When we do the same experiments with binary subsets chosen from each of the five
 \chapter{Structured representations of odor in the fly mushroom body reflect odor relationships in natural sources}
 \label{chap:remypaper}
 \begin{refsection}
+\extrafootertext{All material in this chapter is distributed with all rights reserved.}
 
 % TODO maybe delete this abstract at end? keeping for now just so references are numbered the same way here vs in drafts i'm comparing against while editing
 \section{Abstract}
@@ -3154,6 +3165,7 @@ Odor panel I (left) has a minimum of $n{=}4$ flies, while panel II (right) has a
 \chapter{Searching for principles explaining third-order olfactory neuron responses to simple and complex mixtures}
 \label{chap:natmix}
 \begin{refsection}
+\extrafootertext{All material in this chapter\LicenseText{}.}
 
 \section{Introduction}
 Understanding the encoding of mixtures is fundamental to olfaction, as most natural odors are composed of many component chemicals, frequently dozens\cite{VCF}.
@@ -4584,6 +4596,7 @@ As \cref{fig:response-class-means_orn_binary}, but for 5-component mixtures.
 \chapter{General Discussion}
 \begin{refsection}
 \label{chap:discussion}
+\extrafootertext{All material in this chapter\LicenseText{}.}
 
 %Across the work in this thesis, some of the biggest unresolved questions relate to the role of specific elements in our MB model, as well as the importance of particular odors (or odor pairs).
 Across the work in this thesis, some of the biggest unresolved questions relate to the role of specific elements in our MB model, as well as the importance of particular odors.
@@ -4638,6 +4651,8 @@ There is ongoing work in the lab to characterize the response of this neuron to 
 \chapter{}
 % TODO delete? keep?
 \label{chap:appendix}
+
+\extrafootertext{All appendix material\LicenseText{}.}
 
 \newpage
 
