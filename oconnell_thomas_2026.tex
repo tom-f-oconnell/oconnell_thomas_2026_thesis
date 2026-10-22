@@ -20,9 +20,6 @@
 
 \usepackage{graphicx}
 
-% for the [H] placement specifier
-\usepackage{float}
-
 % Tentative: newtx for better-looking Times
 \usepackage[T1]{fontenc}
 \usepackage{newtxtext,newtxmath}
@@ -599,6 +596,16 @@
 \newenvironment{longcapfigure}{\begin{center}\def\my@captype{figure}}{\end{center}}
 \makeatother
 \DeclareDelayedFloatFlavor{longcapfigure}{figure}
+
+% same as longcapfigure, but on its own landscape page(s) (shown rotated in PDF viewers, via pdflscape), w/ the
+% caption below the figure as displayed (so along the side of the page, as printed). landscape is outside of
+% center here, since inside it, the paragraphs kept center's (portrait) width.
+\makeatletter
+\newenvironment{longcaplandscapefigure}
+  {\begin{landscape}\begin{center}\def\my@captype{figure}}
+  {\end{center}\end{landscape}}
+\makeatother
+\DeclareDelayedFloatFlavor{longcaplandscapefigure}{figure}
 
 % same thing for tables (non-floating, so caption can break across pages).
 % NOTE: not registered w/ \DeclareDelayedFloatFlavor, since endfloat is loaded w/ figuresonly
@@ -2899,17 +2906,9 @@ All other compounds were purchased from Sigma-Aldrich.\\
 
 % Figure S1 - Example volumetric diagnostic panel responses in one fly
 % {
-% NOTE: \begin{landscape} didn't work here (neither one outer one, nor one per figure, outside or
-% inside longcapfigure), so the images are rotated instead
-\begin{longcapfigure}
-\centering
-% TODO TODO also use \begin{landscape} here instead (and have caption be part of textwidth then too prob)?
-%
-% apparently width/height are before rotating, so i assume i need to swap here. seems to work.
-% https://tex.stackexchange.com/questions/516292/rotate-image-in-latex
-% the width=0.9\textheight seems limiting, and specifying height=\textwidth seems to not be preserving aspect ratio
-% NOTE: 0.9\textheight (w/ two lines of caption text) causes blank pages before each of these. 0.875 highest tried that does not.
-\includegraphics[width=0.875\textheight, angle=-90, origin=c]{s1_full_diagnostic_guide_page1}
+% (\textheight is the landscape page's height in these)
+\begin{longcaplandscapefigure}
+\includegraphics[width=\linewidth, height=0.85\textheight, keepaspectratio]{s1_full_diagnostic_guide_page1}
 % TODO what's the logic behind the "segmented glomeruli" betty decided to show? doesn't even include all the ones targeted directly by diagnostics (e.g. DL5), nor other ones labelled like DP1m (between it and the stuff to the left, should show all segmented. bit confusing)
 \mycaptionof{figure}{Example diagnostic odor volumetric ORN responses}{%
 All identified glomeruli are shown across left two columns.
@@ -2917,16 +2916,16 @@ Example responses of one fly to first 12 of 24 ``diagnostic'' odors.
 (continued on next page)
 }
 \label{fig:s1}
-\end{longcapfigure}
-\begin{figure}[H]
-\ContinuedFloat
-\centering
-\includegraphics[width=0.875\textheight, angle=-90, origin=c]{s1_full_diagnostic_guide_page2}
+\end{longcaplandscapefigure}
+\begin{longcaplandscapefigure}
+\includegraphics[width=\linewidth, height=0.85\textheight, keepaspectratio]{s1_full_diagnostic_guide_page2}
+% (same figure number as the previous page, and no list of figures entry)
+{\captionsetup{type=figure}\ContinuedFloat
 \caption[]{\textbf{Example diagnostic odor volumetric ORN responses (continued).}
 Left two columns same as on previous page.
 Example responses of one fly to remaining 12 of 24 ``diagnostic'' odors.
-}
-\end{figure}
+}}
+\end{longcaplandscapefigure}
 % }
 
 % Figure S2 - Diagnostic example mean response and all individual fly responses
